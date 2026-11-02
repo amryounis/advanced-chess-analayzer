@@ -30,6 +30,13 @@
         <span class="eval" id="eval">–</span>
         <span id="depth" class="muted"></span>
         <span id="nps" class="muted"></span>
+        <label class="arrows-pick" title="How many moves of the engine's best line to draw as arrows. White and Black moves alternate, so 4 is two moves each.">Arrows
+          <select id="arrows">
+            <option value="0">off</option><option value="1">1 move</option><option value="2">2 moves</option>
+            <option value="3">3 moves</option><option value="4">4 moves</option><option value="6">6 moves</option>
+            <option value="8">8 moves</option><option value="10">10 moves</option>
+          </select>
+        </label>
       </div>
       <div class="pv" id="pv"></div>
     </div>

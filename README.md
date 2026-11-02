@@ -12,6 +12,10 @@ it keeps going until you move again, pause it, or the game ends.
   (`position fen …`, `go infinite`, `stop`). *Follow* keeps the newest line in view;
   scrolling up stops following.
 - **Summary**: evaluation (always from White's side), depth, speed and the best line in SAN.
+- **Best line as arrows**: the engine's best line is drawn on the board, numbered in play order,
+  White's moves in blue and Black's in orange, fading for later moves. The *Arrows* picker
+  sets how many moves are drawn (default 4, i.e. two for each side; 0 turns them off).
+  Arrows only ever show a line for the position on the board.
 - **Controls**: Undo (Left arrow), New, Flip (F), Pause / Resume (Space), and a FEN box:
   paste a position and press Enter.
 
@@ -74,7 +78,7 @@ skipped when there is none. The browser tests also need `playwright install chro
 | File | What it does |
 | --- | --- |
 | `uci.py` | Drives the engine process; infinite search that can jump to a new position, and drops the old search's output when it does |
-| `api.py` | What the page calls: board, moves, polling of the output and summary |
+| `api.py` | What the page calls: board, moves, polling of the output, summary and the best line's arrows |
 | `config.py` | Where Stockfish is and how it runs |
 | `app.py` | The window (pywebview) and a local static server |
 | `static/` | The page: board, UCI pane, controls |

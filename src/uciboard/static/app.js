@@ -11,6 +11,20 @@ let paused = false;
 let current = null;                  // the last state from Python
 let orientation = "white";
 
+// One brush per side per move of the best line: the first is the boldest, later ones fade,
+// so the order reads at a glance. White's moves are blue, Black's orange (as in the line below).
+const ARROW_COLOR = { w: "#3f6fc4", b: "#d06a1f" };
+function arrowBrushes() {
+  const brushes = {};
+  for (let i = 0; i < 10; i++) {
+    for (const side of ["w", "b"]) {
+      brushes[`${side}${i}`] = { key: `${side}${i}`, color: ARROW_COLOR[side],
+        opacity: Math.max(0.4, 0.9 - i * 0.07), lineWidth: Math.max(6, 11 - i * 0.6) };
+    }
+  }
+  return brushes;
+}
+
 const board = Chessground($("board"), {
   fen: START,
   coordinates: true,
@@ -18,7 +32,19 @@ const board = Chessground($("board"), {
   movable: { free: false, color: undefined, showDests: true, events: { after: onUserMove } },
   premovable: { enabled: false },
   highlight: { lastMove: true, check: true },
+  drawable: { enabled: true, visible: true, brushes: arrowBrushes() },
 });
+
+// How many moves of the engine's best line to draw (a setting kept in this browser).
+let arrowCount = 4;
+try {
+  const saved = localStorage.getItem("arrows");
+  if (saved !== null && !Number.isNaN(Number(saved))) arrowCount = Number(saved);
+} catch (e) { /* storage off */ }
+$("arrows").value = String(arrowCount);
+if ($("arrows").value !== String(arrowCount)) { arrowCount = 4; $("arrows").value = "4"; }
+let lastSummary = null;
+let arrowKey = "";
 
 // ------------------------------------------------------------------ board
 
@@ -39,6 +65,7 @@ function render(st) {
   if (document.activeElement !== $("fen")) $("fen").value = st.fen;
   renderMoves(st);
   setMessage(st.over || "");
+  drawArrows();                        // arrows of a line for another position are removed
 }
 
 function renderMoves(st) {
@@ -134,6 +161,32 @@ $("follow").addEventListener("change", () => {
 });
 $("btn-clear").addEventListener("click", () => { pane.textContent = ""; });
 
+// ------------------------------------------------------- the best line, as arrows
+
+// Draw the first `arrowCount` moves of the engine's line, but only while the line belongs to
+// the position on the board: right after a move the engine is still on the old one.
+function drawArrows() {
+  const s = lastSummary;
+  let shapes = [];
+  if (s && s.arrows && current && s.fen === current.fen && arrowCount > 0) {
+    shapes = s.arrows.slice(0, arrowCount).map((a, i) => ({
+      orig: a.orig, dest: a.dest, brush: `${a.white ? "w" : "b"}${i}`,
+      label: { text: String(i + 1) },
+    }));
+  }
+  const key = JSON.stringify(shapes);
+  if (key === arrowKey) return;        // nothing changed: do not redraw on every poll
+  arrowKey = key;
+  board.setAutoShapes(shapes);
+}
+
+$("arrows").addEventListener("change", () => {
+  arrowCount = Number($("arrows").value);
+  try { localStorage.setItem("arrows", String(arrowCount)); } catch (e) { /* storage off */ }
+  drawArrows();
+  renderSummary(lastSummary);
+});
+
 // ------------------------------------------------------------ the summary
 
 function fmt(n) {
@@ -144,6 +197,8 @@ function fmt(n) {
 }
 
 function renderSummary(s) {
+  lastSummary = s && s.depth ? s : null;
+  drawArrows();
   if (!s || !s.depth) {
     $("eval").textContent = "–";
     $("depth").textContent = "";
@@ -155,16 +210,24 @@ function renderSummary(s) {
   $("eval").textContent = bound + s.score;
   $("depth").textContent = `depth ${s.depth}/${s.seldepth}`;
   $("nps").textContent = s.nps ? `${fmt(s.nps)}/s` : "";
-  // The best line with move numbers, starting from the side to move.
-  let n = s.move_number, white = s.white, out = [];
+  // The best line with move numbers, starting from the side to move. The moves drawn as
+  // arrows are in the side's colour; the rest of the line is dimmed.
+  const pv = $("pv");
+  pv.textContent = "";
+  let n = s.move_number, white = s.white;
   s.pv.forEach((san, i) => {
-    if (white) out.push(`${n}.`);
-    else if (i === 0) out.push(`${n}…`);
-    out.push(san);
+    const add = (cls, text) => {
+      const e = document.createElement("span");
+      e.className = cls;
+      e.textContent = text + " ";
+      pv.append(e);
+    };
+    if (white) add("no", `${n}.`);
+    else if (i === 0) add("no", `${n}…`);
+    add((white ? "w" : "b") + (i < arrowCount ? "" : " far"), san);
     if (!white) n += 1;
     white = !white;
   });
-  $("pv").textContent = out.join(" ");
 }
 
 const STATE_TEXT = { analysing: "analysing", paused: "paused", idle: "game over",

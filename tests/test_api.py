@@ -124,3 +124,28 @@ def test_a_bad_engine_path_is_reported(tmp_path):
     api.start()
     assert "not found" in api.poll(0)["engine"]["error"]
     assert api.move("e2", "e4")["moves"] == ["e4"]        # the board still works
+
+
+@pytest.mark.engine
+def test_the_summary_carries_the_best_line_as_arrows(stockfish):
+    api = Api(config.load_settings(stockfish=stockfish))
+    try:
+        api.start()
+        p = wait_for(lambda: (q := api.poll(0))["summary"].get("depth", 0) >= 10 and q)
+        s = p["summary"]
+        assert s["fen"] == chess.STARTING_FEN
+        assert len(s["arrows"]) == len(s["pv"]) >= 4
+        # White moves first, then the sides alternate, and every arrow is a legal move in turn
+        assert [a["white"] for a in s["arrows"]] == [i % 2 == 0 for i in range(len(s["arrows"]))]
+        board = chess.Board()
+        for a, san in zip(s["arrows"], s["pv"]):
+            move = chess.Move(chess.parse_square(a["orig"]), chess.parse_square(a["dest"]))
+            assert board.san(move) == san
+            board.push(move)
+        # after a move the summary belongs to the new position (and says so)
+        api.move("e2", "e4")
+        fen = api.state()["fen"]
+        s = wait_for(lambda: (q := api.poll(0)["summary"]).get("fen") == fen and q)
+        assert s["arrows"][0]["white"] is False
+    finally:
+        api.shutdown()

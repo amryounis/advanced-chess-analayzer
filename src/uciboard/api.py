@@ -20,7 +20,7 @@ from .uci import EngineError, UciEngine, parse_info
 
 MAX_LINES = 20000            # kept in memory; the oldest half is dropped beyond this
 POLL_BATCH = 2000            # most lines handed to the page in one poll
-PV_MOVES = 10                # moves of the best line shown in the summary
+PV_MOVES = 10                # moves of the engine's best line kept (the page draws as many as you pick)
 
 
 def score_text(score: Optional[dict], white_to_move: bool) -> str:
@@ -136,10 +136,15 @@ class Api:
             except ValueError:
                 return
             white = board.turn == chess.WHITE
-            pv_san = []
+            pv_san, arrows = [], []
             try:
                 for uci in info.get("pv", [])[:PV_MOVES]:
                     move = chess.Move.from_uci(uci)
+                    if move not in board.legal_moves:
+                        break              # not a move of this position: the line ends here
+                    arrows.append({"orig": chess.square_name(move.from_square),
+                                   "dest": chess.square_name(move.to_square),
+                                   "white": board.turn == chess.WHITE})
                     pv_san.append(board.san(move))
                     board.push(move)
             except ValueError:
@@ -149,7 +154,7 @@ class Api:
                 "score": score_text(info["score"], white),
                 "bound": info.get("bound", ""), "nps": info.get("nps", 0),
                 "nodes": info.get("nodes", 0), "time": info.get("time", 0),
-                "pv": pv_san,
+                "pv": pv_san, "arrows": arrows, "fen": tag,
                 "move_number": chess.Board(tag).fullmove_number, "white": white,
             }
 

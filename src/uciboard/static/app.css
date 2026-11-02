@@ -4,6 +4,7 @@
   --pane-bg: #fbfaf7; --pane-sent: #7a6a3a; --pane-best: #1f6b4a; --pane-sys: #b4541a;
   --ui: system-ui, "Segoe UI", sans-serif; --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
   --sq-light: #dee3e6; --sq-dark: #8ca2ad;
+  --arrow-w: #3f6fc4; --arrow-b: #d06a1f;
   --board: max(320px, min(calc(100vh - 250px), calc(100vw - 480px)));
 }
 @media (prefers-color-scheme: dark) {
@@ -11,6 +12,7 @@
     --bg: #1b1f22; --panel: #23282c; --ink: #e4e6e3; --muted: #92a0a6; --line: #343b40;
     --accent: #5fb39a; --accent-ink: #10201b; --warn: #e08a4a;
     --sq-light: #b9c3c8; --sq-dark: #6f8793;
+    --arrow-w: #7fa6ee; --arrow-b: #e8944f;
     --pane-bg: #181c1f; --pane-sent: #c9b56d; --pane-best: #7fd1a8; --pane-sys: #e08a4a;
   }
 }
@@ -94,3 +96,11 @@ cg-board square.check {
   :root { --board: min(calc(100vw - 28px), 560px); }
   .right { min-height: 260px; }
 }
+
+.arrows-pick { margin-left: auto; color: var(--muted); font-size: 13px; display: inline-flex; align-items: center; gap: 6px; }
+.arrows-pick select { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line);
+  border-radius: 6px; padding: 2px 4px; }
+.pv .w { color: var(--arrow-w); font-weight: 650; }
+.pv .b { color: var(--arrow-b); font-weight: 650; }
+.pv .far { opacity: .45; font-weight: 400; }
+.pv .no { color: var(--muted); }

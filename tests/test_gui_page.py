@@ -243,15 +243,55 @@ def test_no_engine_shows_why_and_the_board_still_works(make_page, tmp_path):
     assert errors == []
 
 
+ARROWS = "document.querySelectorAll('#board .cg-shapes line')"
+
+
+def arrow_strokes(page):
+    return page.evaluate(f"[...{ARROWS}].map(l => l.getAttribute('stroke').toLowerCase())")
+
+
 @pytest.mark.engine
-def test_screenshot(make_page, stockfish, tmp_path):
+def test_best_line_is_drawn_as_arrows_four_by_default(make_page, stockfish):
+    page, errors = make_page(engine_api(stockfish))
+    page.wait_for_function(f"{ARROWS}.length === 4")
+    strokes = arrow_strokes(page)
+    assert sorted(strokes) == ["#3f6fc4"] * 2 + ["#d06a1f"] * 2    # two for White, two for Black
+    # the line under the board marks the same four moves in full, and the rest dimmed
+    page.wait_for_function("document.querySelectorAll('#pv .w:not(.far), #pv .b:not(.far)').length === 4")
+    assert page.input_value("#arrows") == "4"
+    assert errors == []
+
+
+@pytest.mark.engine
+def test_the_arrow_picker_and_the_arrows_following_the_position(make_page, stockfish):
     page, _ = make_page(engine_api(stockfish))
-    page.wait_for_function("document.getElementById('eval').textContent !== '–'")
-    for a, b in [("e2", "e4"), ("e7", "e5"), ("g1", "f3")]:
-        drag(page, a, b)
-        page.wait_for_timeout(200)
-    page.wait_for_function("document.getElementById('depth').textContent.includes('depth 1')")
-    page.wait_for_timeout(800)
+    page.wait_for_function(f"{ARROWS}.length === 4")
+
+    page.select_option("#arrows", "2")
+    page.wait_for_function(f"{ARROWS}.length === 2")
+    page.select_option("#arrows", "0")
+    page.wait_for_function(f"{ARROWS}.length === 0")
+    page.select_option("#arrows", "6")
+    page.wait_for_function(f"{ARROWS}.length === 6")
+
+    # a move: the old position's arrows go, the new line's arrows come, now starting with Black
+    page.select_option("#arrows", "4")
+    page.wait_for_function(f"{ARROWS}.length === 4")
+    drag(page, "e2", "e4")
+    page.wait_for_function("document.getElementById('pv').textContent.startsWith('1…')")
+    page.wait_for_function(f"{ARROWS}.length === 4")
+    strokes = arrow_strokes(page)
+    assert sorted(strokes) == ["#3f6fc4"] * 2 + ["#d06a1f"] * 2
+
+    # the choice is remembered by the page
+    assert page.evaluate("localStorage.getItem('arrows')") == "4"
+
+
+@pytest.mark.engine
+def test_screenshot(make_page, stockfish):
+    page, _ = make_page(engine_api(stockfish))
+    page.wait_for_function(f"{ARROWS}.length === 4")
+    page.wait_for_function("parseInt(document.getElementById('depth').textContent.split(' ')[1]) >= 18")
     out = os.environ.get("UCIBOARD_SCREENSHOT")
     if out:
         page.screenshot(path=out)
