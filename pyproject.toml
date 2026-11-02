@@ -1,0 +1,55 @@
+[build-system]
+requires = ["hatchling>=1.21"]
+build-backend = "hatchling.build"
+
+[project]
+name = "uciboard"
+dynamic = ["version"]
+description = "A small desktop chess board that runs a UCI engine (Stockfish) in infinite analysis and shows its raw output."
+readme = "README.md"
+requires-python = ">=3.10"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "Amr" }]
+keywords = ["chess", "uci", "stockfish", "gui", "analysis"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Win32 (MS Windows)",
+    "Intended Audience :: End Users/Desktop",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Topic :: Games/Entertainment :: Board Games",
+]
+dependencies = [
+    "chess>=1.10",
+    "tomli>=2.0; python_version < '3.11'",
+]
+
+[project.optional-dependencies]
+gui = ["pywebview>=5"]
+dev = ["pytest>=8", "ruff>=0.5", "playwright>=1.40"]
+
+[project.scripts]
+uciboard = "uciboard.app:main"
+
+[project.gui-scripts]
+uciboard-app = "uciboard.app:main"
+
+[tool.hatch.version]
+path = "src/uciboard/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/uciboard"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = [
+    "engine: needs a Stockfish executable (skipped when none is found)",
+]
+
+[tool.ruff]
+line-length = 100
+src = ["src"]
+
+[tool.ruff.lint]
+select = ["E9", "F"]

@@ -1,0 +1,63 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>uciboard</title>
+<link rel="stylesheet" href="vendor/chessground.base.css">
+<link rel="stylesheet" href="vendor/chessground.cburnett.css">
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<header class="topbar">
+  <span class="brand">uciboard <span class="ver" id="version"></span></span>
+  <span class="engine" id="engine" data-state="none">
+    <span class="dot"></span><span id="engine-text">starting…</span>
+  </span>
+  <span class="spacer"></span>
+  <button id="btn-undo" title="Take back the last move (Left arrow)">Undo</button>
+  <button id="btn-reset" title="Back to the starting position">New</button>
+  <button id="btn-flip" title="Turn the board round (F)">Flip</button>
+  <button id="btn-pause" title="Stop or restart the analysis (Space)" aria-pressed="false">Pause</button>
+</header>
+
+<main class="desk">
+  <section class="left" aria-label="Board">
+    <div id="board" class="cg-wrap"></div>
+    <div class="moves" id="moves" aria-label="Moves"></div>
+    <div class="status" id="status" aria-live="off">
+      <div class="numbers">
+        <span class="eval" id="eval">–</span>
+        <span id="depth" class="muted"></span>
+        <span id="nps" class="muted"></span>
+      </div>
+      <div class="pv" id="pv"></div>
+    </div>
+    <input id="fen" class="fen" spellcheck="false" autocomplete="off"
+           title="The position (FEN). Paste another and press Enter to set it up.">
+    <div class="msg" id="msg" role="status"></div>
+  </section>
+
+  <section class="right" aria-label="UCI output">
+    <div class="pane-head">
+      <span>UCI output</span>
+      <span class="spacer"></span>
+      <label class="check"><input type="checkbox" id="follow" checked> Follow</label>
+      <button class="quiet" id="btn-clear">Clear</button>
+    </div>
+    <div class="pane" id="pane" tabindex="0"></div>
+  </section>
+</main>
+
+<div class="promo" id="promo" hidden>
+  <div class="promo-box" role="dialog" aria-label="Promote to">
+    <button data-p="q" title="Queen">&#x265B;</button>
+    <button data-p="r" title="Rook">&#x265C;</button>
+    <button data-p="b" title="Bishop">&#x265D;</button>
+    <button data-p="n" title="Knight">&#x265E;</button>
+  </div>
+</div>
+
+<script type="module" src="app.js"></script>
+</body>
+</html>
