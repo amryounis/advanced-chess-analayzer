@@ -19,7 +19,7 @@ from typing import Optional
 import chess
 import chess.pgn
 
-from . import __version__, config, evolution
+from . import __version__, config, evolution, tactics
 from .layout import layout as run_layout
 from .uci import EngineError, UciEngine, parse_info
 
@@ -59,6 +59,7 @@ class Api:
         self._view_last: Optional[list] = None
         self._info: dict = {}                        # who played, from a loaded PGN
         self._evo_lock = threading.Lock()
+        self._theme_cache: dict = {}
         self._evo_thread: Optional[threading.Thread] = None
         self._evo_cancel = threading.Event()
         self._evo_searcher = None
@@ -160,7 +161,7 @@ class Api:
             except ValueError:
                 return
             white = board.turn == chess.WHITE
-            pv_san, arrows = [], []
+            pv_san, pv_uci, arrows = [], [], []
             try:
                 for uci in info.get("pv", [])[:PV_MOVES]:
                     move = chess.Move.from_uci(uci)
@@ -170,6 +171,7 @@ class Api:
                                    "dest": chess.square_name(move.to_square),
                                    "white": board.turn == chess.WHITE})
                     pv_san.append(board.san(move))
+                    pv_uci.append(uci)
                     board.push(move)
             except ValueError:
                 pass                       # an unreadable move ends the line shown
@@ -178,7 +180,7 @@ class Api:
                 "score": score_text(info["score"], white),
                 "bound": info.get("bound", ""), "nps": info.get("nps", 0),
                 "nodes": info.get("nodes", 0), "time": info.get("time", 0),
-                "pv": pv_san, "arrows": arrows, "fen": tag,
+                "pv": pv_san, "pv_uci": pv_uci, "arrows": arrows, "fen": tag,
                 "move_number": chess.Board(tag).fullmove_number, "white": white,
             }
 
@@ -190,8 +192,24 @@ class Api:
             chunk = self._lines[start:start + POLL_BATCH]
             new_cursor = self._offset + start + len(chunk)
             summary = dict(self._summary)
+        if summary.get("pv_uci"):
+            summary["themes"] = self._themes(summary["fen"], summary["pv_uci"])
         return {"lines": chunk, "cursor": new_cursor, "summary": summary,
                 "engine": self._engine_state(engine)}
+
+    def _themes(self, fen: str, pv: list):
+        """What the moves of the engine's line do (fork, discovered check, ...), worked out
+        from the geometry of the position; remembered, because the page asks every few moments."""
+        key = (fen, tuple(pv))
+        if key not in self._theme_cache:
+            try:
+                found = tactics.line_themes(chess.Board(fen), pv)
+            except Exception:                          # noqa: BLE001 - a label is never worth a crash
+                found = None
+            if len(self._theme_cache) > 64:
+                self._theme_cache.clear()
+            self._theme_cache[key] = found
+        return self._theme_cache[key]
 
     def _engine_state(self, engine) -> dict:
         if engine is None:
@@ -249,7 +267,15 @@ class Api:
             "first_is_black": root.turn == chess.BLACK,
             "over": self._result_text(shown),
             "info": dict(self._info),
+            "tactics": self._tactics(shown),
         }
+
+    @staticmethod
+    def _tactics(board: chess.Board) -> dict:
+        try:
+            return tactics.analyse(board)
+        except Exception:                              # noqa: BLE001 - overlays are optional
+            return {"loose": [], "pins": []}
 
     @staticmethod
     def _result_text(b: chess.Board) -> str:

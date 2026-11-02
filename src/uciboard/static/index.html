@@ -43,6 +43,13 @@
         </label>
       </div>
       <div class="pv" id="pv"></div>
+      <div class="line-note" id="line-note" title="Material counted as pawn 1, knight and bishop 3, rook 5, queen 9"></div>
+      <div class="tactic-tools">
+        <span class="muted">Show on the board</span>
+        <label class="check" title="Pieces the other side can win by an exchange (counted properly, not just attackers against defenders). Red: it is their move now."><input type="checkbox" id="show-loose" checked> Loose pieces</label>
+        <label class="check" title="Pieces that cannot move without losing something behind them, and valuable pieces with something behind them"><input type="checkbox" id="show-pins" checked> Pins and skewers</label>
+      </div>
+      <ul class="tactics" id="tactics" aria-label="Tactical features of this position"></ul>
     </div>
     <input id="fen" class="fen" spellcheck="false" autocomplete="off"
            title="The position (FEN). Paste another and press Enter to set it up.">

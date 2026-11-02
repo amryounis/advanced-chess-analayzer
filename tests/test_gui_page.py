@@ -222,4 +222,4 @@ def test_screenshot(make_page, stockfish):
     page.wait_for_function("parseInt(document.getElementById('depth').textContent.split(' ')[1]) >= 18")
     out = os.environ.get("UCIBOARD_SCREENSHOT")
     if out:
-        page.screenshot(path=out)
+        page.screenshot(path=os.path.join(out, "board.png") if os.path.isdir(out) else out)

@@ -24,6 +24,11 @@ function arrowBrushes() {
         opacity: Math.max(0.4, 0.9 - i * 0.07), lineWidth: Math.max(6, 11 - i * 0.6) };
     }
   }
+  // what the geometry of the position says (not the engine): pieces that can be won, pins, skewers
+  brushes.loose = { key: "loose", color: "#d62f2f", opacity: 0.85, lineWidth: 6 };
+  brushes.loose2 = { key: "loose2", color: "#d4a017", opacity: 0.85, lineWidth: 5 };
+  brushes.pin = { key: "pin", color: "#8a4fc7", opacity: 0.75, lineWidth: 6 };
+  brushes.skewer = { key: "skewer", color: "#1fa39a", opacity: 0.75, lineWidth: 6 };
   return brushes;
 }
 
@@ -47,6 +52,14 @@ $("arrows").value = String(arrowCount);
 if ($("arrows").value !== String(arrowCount)) { arrowCount = 4; $("arrows").value = "4"; }
 let lastSummary = null;
 let arrowKey = "";
+const show = { loose: true, pins: true };
+for (const k of Object.keys(show)) {
+  try {
+    const v = localStorage.getItem("show-" + k);
+    if (v !== null) show[k] = v === "1";
+  } catch (e) { /* storage off */ }
+  $("show-" + k).checked = show[k];
+}
 
 // ------------------------------------------------------------------ board
 
@@ -68,7 +81,8 @@ function render(st) {
   if (document.activeElement !== $("fen")) $("fen").value = st.fen;
   renderMoves(st);
   setMessage(st.over || "");
-  drawArrows();                        // arrows of a line for another position are removed
+  renderTactics(st);
+  drawShapes();                        // arrows of a line for another position are removed
   if (evo) evo.onState(st);
 }
 
@@ -167,16 +181,34 @@ $("btn-clear").addEventListener("click", () => { pane.textContent = ""; });
 
 // ------------------------------------------------------- the best line, as arrows
 
-// Draw the first `arrowCount` moves of the engine's line, but only while the line belongs to
-// the position on the board: right after a move the engine is still on the old one.
-function drawArrows() {
+// Everything drawn on the board: the first `arrowCount` moves of the engine's line, but only while
+// the line belongs to the position on the board (right after a move the engine is still on the
+// old one), and what the geometry says about the position (loose pieces, pins), which always does.
+function tacticShapes() {
+  const t = current && current.tactics;
+  const shapes = [];
+  if (!t) return shapes;
+  if (show.loose) {
+    for (const f of t.loose) {
+      shapes.push({ orig: f.square, brush: f.now ? "loose" : "loose2", label: { text: `+${f.gain}` } });
+    }
+  }
+  if (show.pins) {
+    for (const p of t.pins) {
+      shapes.push({ orig: p.slider, dest: p.back, brush: p.kind === "skewer" ? "skewer" : "pin" });
+    }
+  }
+  return shapes;
+}
+
+function drawShapes() {
   const s = lastSummary;
-  let shapes = [];
+  let shapes = tacticShapes();
   if (s && s.arrows && current && s.fen === current.fen && arrowCount > 0) {
-    shapes = s.arrows.slice(0, arrowCount).map((a, i) => ({
+    shapes = shapes.concat(s.arrows.slice(0, arrowCount).map((a, i) => ({
       orig: a.orig, dest: a.dest, brush: `${a.white ? "w" : "b"}${i}`,
       label: { text: String(i + 1) },
-    }));
+    })));
   }
   const key = JSON.stringify(shapes);
   if (key === arrowKey) return;        // nothing changed: do not redraw on every poll
@@ -184,10 +216,35 @@ function drawArrows() {
   board.setAutoShapes(shapes);
 }
 
+// The same findings in words, under the line.
+function renderTactics(st) {
+  const box = $("tactics");
+  box.textContent = "";
+  const t = st.tactics;
+  if (!t) return;
+  const add = (cls, text) => {
+    const li = document.createElement("li");
+    li.className = cls;
+    li.textContent = text;
+    box.append(li);
+  };
+  if (show.loose) for (const f of t.loose) add(f.now ? "t-loose now" : "t-loose", f.text);
+  if (show.pins) for (const p of t.pins) add(p.kind === "skewer" ? "t-skewer" : "t-pin", p.text);
+}
+
+for (const k of Object.keys(show)) {
+  $("show-" + k).addEventListener("change", () => {
+    show[k] = $("show-" + k).checked;
+    try { localStorage.setItem("show-" + k, show[k] ? "1" : "0"); } catch (e) { /* storage off */ }
+    if (current) renderTactics(current);
+    drawShapes();
+  });
+}
+
 $("arrows").addEventListener("change", () => {
   arrowCount = Number($("arrows").value);
   try { localStorage.setItem("arrows", String(arrowCount)); } catch (e) { /* storage off */ }
-  drawArrows();
+  drawShapes();
   renderSummary(lastSummary);
 });
 
@@ -202,12 +259,13 @@ function fmt(n) {
 
 function renderSummary(s) {
   lastSummary = s && s.depth ? s : null;
-  drawArrows();
+  drawShapes();
   if (!s || !s.depth) {
     $("eval").textContent = "–";
     $("depth").textContent = "";
     $("nps").textContent = "";
     $("pv").textContent = "";
+    $("line-note").textContent = "";
     return;
   }
   const bound = s.bound === "lower" ? "≥ " : s.bound === "upper" ? "≤ " : "";
@@ -229,9 +287,33 @@ function renderSummary(s) {
     if (white) add("no", `${n}.`);
     else if (i === 0) add("no", `${n}…`);
     add((white ? "w" : "b") + (i < arrowCount ? "" : " far"), san);
+    for (const t of (s.themes && s.themes.plies[i] ? s.themes.plies[i].tags : [])) {
+      const label = TAG_TEXT[t.tag];
+      if (!label) continue;
+      const e = document.createElement("span");
+      e.className = "tag";
+      e.textContent = label;
+      e.title = tagTitle(t);
+      pv.append(e, " ");
+    }
     if (!white) n += 1;
     white = !white;
   });
+  const m = s.themes && s.themes.material;
+  $("line-note").textContent = m && m.plies > 0 && m.net !== 0
+    ? `Material once the line settles (move ${m.plies}): ${(m.net > 0) === m.white ? "White" : "Black"} +${Math.abs(m.net)}`
+    : "";
+}
+
+// Labels on the moves of the engine's line. Checks, captures and promotions are already in the move's
+// own notation (+ x =), so only what the notation does not say is added.
+const TAG_TEXT = { fork: "fork", "discovered check": "disc+", "double check": "dbl+", sacrifice: "sac" };
+
+function tagTitle(t) {
+  if (t.tag === "fork") return `Fork: attacks ${t.squares.join(" and ")}, and cannot simply be taken`;
+  if (t.tag === "sacrifice") return `Gives up about ${t.pawns} pawns' worth of material on the spot`;
+  if (t.tag === "discovered check") return "Discovered check: a piece behind the moved one gives the check";
+  return "Double check: the king can only move";
 }
 
 const STATE_TEXT = { analysing: "analysing", paused: "paused", idle: "game over",

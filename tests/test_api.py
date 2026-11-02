@@ -149,3 +149,24 @@ def test_the_summary_carries_the_best_line_as_arrows(stockfish):
         assert s["arrows"][0]["white"] is False
     finally:
         api.shutdown()
+
+
+def test_state_carries_what_the_geometry_says_about_the_shown_position(tmp_path):
+    api = Api(config.load_settings(own_config=tmp_path / "none.toml"))
+    assert api.state()["tactics"] == {"loose": [], "pins": []}
+    api.set_position("4k3/8/8/3q4/8/8/8/3RK3 w - - 0 1")
+    loose = api.state()["tactics"]["loose"]
+    assert [(f["square"], f["gain"], f["now"]) for f in loose] == [("d5", 9, True)]
+    api.view_position("7k/8/5n2/3pB3/8/8/8/3RK3 w - - 0 1")           # overlays follow what is shown
+    assert any(p["absolute"] for p in api.state()["tactics"]["pins"])
+
+
+def test_line_themes_are_added_to_the_summary_and_remembered(tmp_path):
+    api = Api(config.load_settings(own_config=tmp_path / "none.toml"))
+    fen = "r3k3/8/8/3N4/8/8/8/4K3 w - - 0 1"
+    api._summary = {"pv_uci": ["d5c7"], "fen": fen}
+    first = api.poll(0)["summary"]["themes"]
+    assert [t["tag"] for t in first["plies"][0]["tags"]] == ["fork"]
+    assert api.poll(0)["summary"]["themes"] is first                 # computed once
+    api._summary = {"pv_uci": [], "fen": fen}
+    assert "themes" not in api.poll(0)["summary"]

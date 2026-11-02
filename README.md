@@ -19,10 +19,43 @@ it keeps going until you move again, pause it, or the game ends.
 - **Controls**: Undo (Left arrow), New, Flip (F), Pause / Resume (Space), and a FEN box:
   paste a position and press Enter.
 
+- **Tactics**: pieces that can be won, pins and skewers drawn on the board, and labels (fork,
+  discovered or double check, sacrifice) on the moves of the engine's line. See below.
 - **Evolution tab**: the graph of [Chess Evolution Visualization](https://doi.org/10.1109/TVCG.2014.2299803)
   (Lu, Wang, Lin; IEEE TVCG 2014) for the game on the board. See below.
 
 Nothing leaves your machine. No LLM, no internet.
+
+## Tactics
+
+Two layers, kept apart so you can tell what Stockfish thinks from what is simply geometry.
+
+**The position on the board** (no engine, instant; the *Show on the board* boxes toggle them):
+
+- **Loose pieces**: a ring with the material the other side wins (`+3` is a knight's worth), listed
+  below the line. Red means it is their move, yellow means they would have to be allowed to.
+  This is decided by a *static exchange evaluation*, not by counting attackers against defenders:
+  both sides capture on the square cheapest-first, pieces behind a capturer join in (x-rays), either
+  side may stop, a pinned piece may only capture along its pin, and a king only takes an unguarded
+  piece. So a pawn attacking a queen that is defended once is flagged (it wins the queen for a pawn),
+  and an even trade is not.
+- **Pins and skewers**: purple (pin, absolute or to something worth more) and teal (skewer) arrows
+  from the pinning piece to the piece behind. python-chess's own `is_pinned` only knows pins to the
+  king, so the others are found by looking along the line. A pin is not reported if the pinning
+  piece itself can simply be won. A skewer against the king is a check and is not listed.
+
+**The engine's line** (the moves Stockfish chose, named by geometry): `fork` (two targets that are
+the king, worth more than the forker, or undefended, and the forker cannot be taken profitably),
+`disc+` (discovered check), `dbl+` (double check), `sac` (the moved piece can be won for more
+than the move took). Checks, captures and promotions are already in the move notation. Under the
+line, the **net material** is given only up to the last position where nothing is left to take for free: a
+line cut off in the middle of an exchange would otherwise show a capture that is about to be
+recaptured as a gain.
+
+Limits: a king already in check from another piece, overloaded defenders and promotion or en passant
+inside an exchange are not modelled; material is counted pawn 1, minor piece 3, rook 5, queen 9. These
+are descriptions of the position, not evaluations of it: a "loose" piece can still be the right
+thing to leave.
 
 ## Evolution tab
 
@@ -136,6 +169,7 @@ skipped when there is none. The browser tests also need `playwright install chro
 | --- | --- |
 | `uci.py` | Drives the engine process; infinite search that can jump to a new position, and drops the old search's output when it does |
 | `api.py` | What the page calls: board, moves, polling of the output, summary and the best line's arrows; PGN loading, viewing a position, the Evolution job |
+| `tactics.py` | Exchange evaluation, loose pieces, pins and skewers, and the labels and net material of an engine line (python-chess only) |
 | `evolution.py` | The paper's pipeline: sequences, decision tree, merging, shortening, events, edge thickness, score chart |
 | `layout.py` | Equation (1): columns, virtual nodes, ordering and vertical positions |
 | `config.py` | Where Stockfish is and how it runs |
