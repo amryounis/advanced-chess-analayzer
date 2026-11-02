@@ -10,12 +10,17 @@ latest summary of the search. Nothing is pushed into the page.
 
 from __future__ import annotations
 
+import io
+import json
 import threading
+import traceback
 from typing import Optional
 
 import chess
+import chess.pgn
 
-from . import __version__, config
+from . import __version__, config, evolution
+from .layout import layout as run_layout
 from .uci import EngineError, UciEngine, parse_info
 
 MAX_LINES = 20000            # kept in memory; the oldest half is dropped beyond this
@@ -50,6 +55,16 @@ class Api:
         self._lines: list = []
         self._offset = 0                     # sequence number of _lines[0]
         self._summary: dict = {}
+        self._view: Optional[chess.Board] = None     # a position being looked at, not part of the game
+        self._view_last: Optional[list] = None
+        self._info: dict = {}                        # who played, from a loaded PGN
+        self._evo_lock = threading.Lock()
+        self._evo_thread: Optional[threading.Thread] = None
+        self._evo_cancel = threading.Event()
+        self._evo_searcher = None
+        self._evo_busy = False                       # the job has the machine: live analysis waits
+        self._evo_status: dict = {"state": "idle", "done": 0, "total": 0, "message": "", "error": ""}
+        self._evo_result: Optional[dict] = None
 
     # ------------------------------------------------------------- engine
 
@@ -83,22 +98,31 @@ class Api:
             return self._state()
 
     def shutdown(self, *_args) -> None:
+        self.evolution_cancel()
+        thread = self._evo_thread
+        if thread and thread.is_alive():
+            thread.join(timeout=5)
         with self._lock:
             engine, self._engine = self._engine, None
         if engine:
             engine.quit()
+
+    def _shown(self) -> chess.Board:
+        """The position on the board: the game, or one being looked at."""
+        return self._view if self._view is not None else self._board
 
     def _restart_analysis(self) -> None:
         # called with the lock held
         engine = self._engine
         if not engine or not engine.alive:
             return
-        if self._board.is_game_over(claim_draw=False) or self._paused:
+        shown = self._shown()
+        if self._evo_busy or shown.is_game_over(claim_draw=False) or self._paused:
             engine.stop()                  # no search: nothing to show for this position
             with self._buf_lock:
                 self._summary = {}
             return
-        fen = self._board.fen()
+        fen = shown.fen()
         try:
             engine.analyze(fen, tag=fen)
         except EngineError as e:
@@ -174,7 +198,9 @@ class Api:
             return {"state": "none", "name": "", "error": self._error}
         if not engine.alive:
             return {"state": "exited", "name": engine.name, "error": self._error}
-        if self._board.is_game_over(claim_draw=False):
+        if self._evo_busy:
+            state = "busy"
+        elif self._shown().is_game_over(claim_draw=False):
             state = "idle"
         elif self._paused:
             state = "paused"
@@ -190,32 +216,43 @@ class Api:
 
     def _state(self) -> dict:
         board = self._board
+        shown = self._shown()
         replay = chess.Board(self._root_fen)
         sans = []
         for move in board.move_stack:
             sans.append(replay.san(move))
             replay.push(move)
         dests: dict = {}
-        for move in board.legal_moves:
-            dests.setdefault(chess.square_name(move.from_square), []).append(
-                chess.square_name(move.to_square))
-        last = board.peek() if board.move_stack else None
+        if self._view is None:                      # nothing can be played while looking at a position
+            for move in board.legal_moves:
+                dests.setdefault(chess.square_name(move.from_square), []).append(
+                    chess.square_name(move.to_square))
+        if self._view is not None:
+            last = self._view_last
+        elif board.move_stack:
+            mv = board.peek()
+            last = [chess.square_name(mv.from_square), chess.square_name(mv.to_square)]
+        else:
+            last = None
+        root = chess.Board(self._root_fen)
         return {
             "version": __version__,
-            "fen": board.fen(),
-            "turn": "white" if board.turn == chess.WHITE else "black",
+            "fen": shown.fen(),
+            "game_fen": board.fen(),
+            "viewing": self._view is not None,
+            "turn": "white" if shown.turn == chess.WHITE else "black",
             "dests": {k: sorted(set(v)) for k, v in dests.items()},
-            "last": ([chess.square_name(last.from_square), chess.square_name(last.to_square)]
-                     if last else None),
-            "check": board.is_check(),
+            "last": last,
+            "check": shown.is_check(),
             "moves": sans,
-            "first_move_number": chess.Board(self._root_fen).fullmove_number,
-            "first_is_black": chess.Board(self._root_fen).turn == chess.BLACK,
-            "over": self._result_text(),
+            "first_move_number": root.fullmove_number,
+            "first_is_black": root.turn == chess.BLACK,
+            "over": self._result_text(shown),
+            "info": dict(self._info),
         }
 
-    def _result_text(self) -> str:
-        b = self._board
+    @staticmethod
+    def _result_text(b: chess.Board) -> str:
         if b.is_checkmate():
             return "Checkmate. " + ("Black" if b.turn == chess.WHITE else "White") + " wins."
         if b.is_stalemate():
@@ -242,6 +279,9 @@ class Api:
     def move(self, orig: str, dest: str, promotion: Optional[str] = None) -> dict:
         """Play a move for whoever is to move. An illegal move changes nothing."""
         with self._lock:
+            if self._view is not None:
+                return {**self._state(), "rejected": True,
+                        "message": "You are looking at a position from the graph. Go back to the game to move."}
             try:
                 promo = chess.Piece.from_symbol(promotion.lower()).piece_type if promotion else None
                 move = chess.Move(chess.parse_square(orig), chess.parse_square(dest), promo)
@@ -255,6 +295,7 @@ class Api:
 
     def undo(self) -> dict:
         with self._lock:
+            self._view = None
             if self._board.move_stack:
                 self._board.pop()
                 self._restart_analysis()
@@ -262,6 +303,7 @@ class Api:
 
     def reset(self) -> dict:
         with self._lock:
+            self._view, self._info = None, {}
             self._board = chess.Board()
             self._root_fen = self._board.fen()
             self._restart_analysis()
@@ -277,7 +319,172 @@ class Api:
             if not board.is_valid():
                 return {**self._state(), "rejected": True,
                         "message": "That position is not legal."}
+            self._view, self._info = None, {}
             self._board = board
             self._root_fen = board.fen()
             self._restart_analysis()
             return self._state()
+
+    # --------------------------------------------------------- games and views
+
+    def load_pgn(self, text: str) -> dict:
+        """Put the main line of a pasted PGN on the board (the game to analyse)."""
+        try:
+            game = chess.pgn.read_game(io.StringIO(text or ""))
+        except (ValueError, KeyError) as e:
+            return {**self.state(), "rejected": True, "message": f"Cannot read that PGN: {e}"}
+        if game is None:
+            return {**self.state(), "rejected": True, "message": "No game found in that text."}
+        variant = game.headers.get("Variant", "Standard")
+        if variant.lower() not in ("standard", "chess", ""):
+            return {**self.state(), "rejected": True,
+                    "message": f"Only standard chess is supported (this is {variant})."}
+        start = game.board()
+        board = start.copy()
+        for move in game.mainline_moves():
+            board.push(move)
+        if not board.move_stack:
+            message = str(game.errors[0]) if game.errors else "That game has no moves."
+            return {**self.state(), "rejected": True, "message": message}
+        h = game.headers
+        info = {"white": h.get("White", ""), "black": h.get("Black", ""), "event": h.get("Event", ""),
+                "date": h.get("Date", ""), "result": h.get("Result", "")}
+        with self._lock:
+            self._view = None
+            self._board, self._root_fen = board, start.fen()
+            self._info = {k: v for k, v in info.items() if v.strip("?. ")}    # drop "?" placeholders
+            self._restart_analysis()
+            st = self._state()
+        if game.errors:
+            st["message"] = f"The game was read up to an illegal move ({game.errors[0]})."
+        return st
+
+    def view_position(self, fen: str, last: Optional[list] = None) -> dict:
+        """Look at another position (a node of the graph) without touching the game."""
+        try:
+            board = chess.Board(fen)
+        except ValueError:
+            return {**self.state(), "rejected": True, "message": "Not a valid position."}
+        if not board.is_valid():
+            return {**self.state(), "rejected": True, "message": "That position is not legal."}
+        try:
+            ok = isinstance(last, list) and len(last) == 2 and all(
+                isinstance(q, str) and chess.parse_square(q) >= 0 for q in last)
+        except ValueError:
+            ok = False
+        if not ok:
+            last = None
+        with self._lock:
+            self._view, self._view_last = board, last
+            self._restart_analysis()
+            return self._state()
+
+    def clear_view(self) -> dict:
+        with self._lock:
+            self._view, self._view_last = None, None
+            self._restart_analysis()
+            return self._state()
+
+    # ------------------------------------------------------------ evolution
+
+    def evolution_start(self, params: Optional[dict] = None) -> dict:
+        """Analyse the game on the board for the evolution graph (runs in the background)."""
+        with self._lock:
+            if self._evo_thread and self._evo_thread.is_alive():
+                return {"started": False, "message": "An analysis is already running."}
+            if not self._board.move_stack:
+                return {"started": False, "message": "Play some moves or load a PGN first."}
+            try:
+                path = self._settings.require_stockfish()
+            except config.ConfigError as e:
+                return {"started": False, "message": str(e)}
+            s = self._settings
+            wanted = evolution.Params(depth=s.evo_depth, lines=s.evo_lines, seconds=s.evo_seconds,
+                                      check_depth=s.evo_check_depth)
+            for key, value in (params or {}).items():
+                if key in ("depth", "lines", "seconds", "check_depth", "check_tolerance", "max_plies"):
+                    try:
+                        setattr(wanted, key, type(getattr(wanted, key))(value))
+                    except (TypeError, ValueError):
+                        return {"started": False, "message": f"{key} must be a number."}
+            wanted.clamp()
+            start_fen = self._root_fen
+            moves = [m.uci() for m in self._board.move_stack]
+            info = dict(self._info)
+            self._evo_cancel = threading.Event()
+            self._evo_busy = True
+            if self._engine and self._engine.alive:
+                self._engine.stop()                       # the job needs the machine
+            with self._buf_lock:
+                self._summary = {}
+            self._set_evo(state="running", done=0, total=0, message="starting the engine", error="")
+            self._evo_result = None
+            self._evo_thread = threading.Thread(
+                target=self._run_evolution, args=(path, start_fen, moves, wanted, info), daemon=True)
+            self._evo_thread.start()
+        return {"started": True}
+
+    def evolution_defaults(self) -> dict:
+        s = self._settings
+        return {"depth": s.evo_depth, "seconds": s.evo_seconds, "lines": s.evo_lines,
+                "check_depth": s.evo_check_depth}
+
+    def evolution_status(self) -> dict:
+        with self._evo_lock:
+            return dict(self._evo_status)
+
+    def evolution_result(self) -> Optional[dict]:
+        return self._evo_result
+
+    def evolution_cancel(self) -> dict:
+        self._evo_cancel.set()
+        searcher = self._evo_searcher
+        if searcher is not None:
+            searcher.abort()
+        return self.evolution_status()
+
+    def _set_evo(self, **changes) -> None:
+        with self._evo_lock:
+            self._evo_status.update(changes)
+
+    def _run_evolution(self, path: str, start_fen: str, moves: list, params, info: dict) -> None:
+        cache_file = config.cache_path(self._settings) / (
+            evolution.cache_key(start_fen, moves, params) + ".json")
+        try:
+            data = None
+            try:
+                data = json.loads(cache_file.read_text(encoding="utf-8"))
+            except (OSError, ValueError):
+                data = None
+            if data is not None:
+                self._set_evo(message="from the saved analysis")
+            else:
+                with evolution.UciSearcher(path, self._settings.uci_options()) as searcher:
+                    self._evo_searcher = searcher
+                    evo = evolution.build(
+                        start_fen, moves, searcher, params,
+                        progress=lambda done, total, msg: self._set_evo(done=done, total=total, message=msg),
+                        cancel=self._evo_cancel)
+                self._set_evo(message="laying out the graph")
+                ranks = {n.id: n.rank for n in evo.nodes}
+                main = {n.id for n in evo.nodes if n.main is not None}
+                laid = run_layout(ranks, main, [(e.src, e.dst, e.actual) for e in evo.edges])
+                data = evo.to_json(laid)
+                try:
+                    cache_file.parent.mkdir(parents=True, exist_ok=True)
+                    cache_file.write_text(json.dumps(data), encoding="utf-8")
+                except OSError:
+                    pass                                   # not being able to save is not an error
+            data["info"] = info
+            self._evo_result = data
+            self._set_evo(state="done", message="done")
+        except evolution.Cancelled:
+            self._set_evo(state="cancelled", message="cancelled")
+        except Exception as e:                             # noqa: BLE001 - shown to the user
+            self._note(f"! evolution: {traceback.format_exc(limit=3)}")
+            self._set_evo(state="error", error=str(e) or e.__class__.__name__)
+        finally:
+            self._evo_searcher = None
+            with self._lock:
+                self._evo_busy = False
+                self._restart_analysis()

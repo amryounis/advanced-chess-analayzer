@@ -1,4 +1,5 @@
 import { Chessground } from "./vendor/chessground.min.js";
+import { initEvolution } from "./evo.js";
 
 const $ = (id) => document.getElementById(id);
 const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -10,6 +11,7 @@ let cursor = 0;
 let paused = false;
 let current = null;                  // the last state from Python
 let orientation = "white";
+let evo = null;                      // the Evolution tab (evo.js), set up in init()
 
 // One brush per side per move of the best line: the first is the boldest, later ones fade,
 // so the order reads at a glance. White's moves are blue, Black's orange (as in the line below).
@@ -56,16 +58,18 @@ function render(st) {
     check: st.check,
     lastMove: st.last,
     movable: {
-      color: st.over ? undefined : st.turn,
+      color: st.over || st.viewing ? undefined : st.turn,
       dests: new Map(Object.entries(st.dests)),
     },
   });
+  $("viewbar").hidden = !st.viewing;
   $("version").textContent = st.version;
   document.title = `uciboard ${st.version}`;
   if (document.activeElement !== $("fen")) $("fen").value = st.fen;
   renderMoves(st);
   setMessage(st.over || "");
   drawArrows();                        // arrows of a line for another position are removed
+  if (evo) evo.onState(st);
 }
 
 function renderMoves(st) {
@@ -231,7 +235,7 @@ function renderSummary(s) {
 }
 
 const STATE_TEXT = { analysing: "analysing", paused: "paused", idle: "game over",
-                     none: "no engine", exited: "engine stopped" };
+                     busy: "analysing the whole game", none: "no engine", exited: "engine stopped" };
 
 function renderEngine(e) {
   $("engine").dataset.state = e.state;
@@ -272,6 +276,24 @@ $("btn-pause").addEventListener("click", async () => {
   await act(paused ? api.pause : api.resume);
 });
 
+$("btn-back").addEventListener("click", () => act(api.clear_view));
+
+// ------------------------------------------------------------------- tabs
+
+function showTab(name) {
+  for (const b of document.querySelectorAll(".tabs [role=tab]")) {
+    b.setAttribute("aria-selected", String(b.dataset.tab === name));
+  }
+  $("pane").hidden = name !== "uci";
+  $("evo").hidden = name !== "evo";
+  document.querySelector(".pane-head").dataset.tab = name;
+  if (name === "evo" && evo) evo.show();
+  else if (name === "uci" && $("follow").checked) pane.scrollTop = pane.scrollHeight;
+}
+for (const b of document.querySelectorAll(".tabs [role=tab]")) {
+  b.addEventListener("click", () => showTab(b.dataset.tab));
+}
+
 $("fen").addEventListener("keydown", async (e) => {
   if (e.key !== "Enter") return;
   const st = await api.set_position($("fen").value);
@@ -282,6 +304,11 @@ $("fen").addEventListener("keydown", async (e) => {
 $("fen").addEventListener("blur", () => { if (current) $("fen").value = current.fen; });
 
 window.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && current && current.viewing && !$("pgn-dialog").open) {
+    e.preventDefault();
+    $("btn-back").click();
+    return;
+  }
   if (e.target.tagName === "INPUT" && e.target.type !== "checkbox") return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
   if (e.key === "ArrowLeft") { e.preventDefault(); $("btn-undo").click(); }
@@ -295,6 +322,13 @@ async function init() {
   api = window.pywebview.api;
   render(await api.state());
   render(await api.start());           // starts Stockfish and the first analysis
+  evo = initEvolution({
+    api: () => api,
+    render,
+    message: setMessage,
+  });
+  evo.onState(current);
+  evo.init();
   poll();
   setInterval(poll, POLL_MS);
 }

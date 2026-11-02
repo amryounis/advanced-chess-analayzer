@@ -105,14 +105,23 @@ class UciEngine:
 
     # ------------------------------------------------------------- searching
 
-    def analyze(self, fen: str, tag: object = None) -> None:
-        """Search `fen` until told otherwise, dropping whatever the old search prints."""
+    def analyze(self, fen: str, tag: object = None, limits: str = "infinite") -> None:
+        """Search `fen`, dropping whatever the old search prints.
+
+        `limits` is what follows `go`: "infinite" (until told to stop) or for example
+        "depth 18 movetime 20000". A search with limits ends by itself with `bestmove`."""
         with self._lock:
             self._abandon()
             self._tag = tag
             self._send(f"position fen {fen}")
-            self._send("go infinite")
+            self._send(f"go {limits}")
             self._searching, self._stopping = True, False
+
+    def set_option(self, name: str, value) -> None:
+        """Change an engine option between searches (unknown options are ignored)."""
+        with self._lock:
+            if name in self.option_names:
+                self._send(f"setoption name {name} value {value}")
 
     def stop(self) -> None:
         """Stop searching; the engine's final `bestmove` is still shown."""

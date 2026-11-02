@@ -17,6 +17,13 @@ Other settings (all optional) go in uciboard's config file:
     threads = 4        # search threads
     hash_mb = 512      # transposition table size
     multipv = 1        # lines shown at once
+
+Evolution tab (the paper's graph; all optional):
+    evo_depth = 16         # the paper uses 20: deeper is slower, 20 may take many minutes
+    evo_lines = 9
+    evo_seconds = 20       # most time on one position
+    evo_check_depth = 10
+    cache_dir = ""         # where finished analyses are kept
 """
 
 from __future__ import annotations
@@ -44,6 +51,11 @@ class Settings:
     threads: int = 1
     hash_mb: int = 512
     multipv: int = 1
+    evo_depth: int = 16             # Evolution tab: search depth per position (the paper uses 20)
+    evo_lines: int = 9              # sequences asked for at each position (the paper: 9)
+    evo_seconds: float = 20.0       # most time on one position
+    evo_check_depth: int = 10       # depth of the quick searches that judge a check
+    cache_dir: str = ""             # finished Evolution analyses; "" = "evolution" beside the config
     source: str = "defaults"        # where the Stockfish path came from (info only)
 
     def uci_options(self) -> dict:
@@ -69,6 +81,10 @@ def _config_home() -> Path:
 
 def user_config_path() -> Path:
     return _config_home() / "uciboard" / "config.toml"
+
+
+def cache_path(settings: "Settings") -> Path:
+    return Path(settings.cache_dir) if settings.cache_dir else user_config_path().parent / "evolution"
 
 
 def chesscoach_config_path() -> Path:
@@ -102,7 +118,8 @@ def load_settings(stockfish: Optional[str] = None, own_config: Optional[Path] = 
 
     own = Path(own_config) if own_config else user_config_path()
     data = _read(own) if own.exists() else {}
-    unknown = set(data) - {"stockfish_path", "threads", "hash_mb", "multipv"}
+    unknown = set(data) - {"stockfish_path", "threads", "hash_mb", "multipv", "evo_depth",
+                           "evo_lines", "evo_seconds", "evo_check_depth", "cache_dir"}
     if unknown:
         raise ConfigError(f"Unknown setting(s) in {own}: {', '.join(sorted(unknown))}")
     if "threads" in data:
@@ -111,6 +128,16 @@ def load_settings(stockfish: Optional[str] = None, own_config: Optional[Path] = 
         s.hash_mb = _int("hash_mb", data["hash_mb"], 1, 1_000_000)
     if "multipv" in data:
         s.multipv = _int("multipv", data["multipv"], 1, 20)
+    if "evo_depth" in data:
+        s.evo_depth = _int("evo_depth", data["evo_depth"], 1, 60)
+    if "evo_lines" in data:
+        s.evo_lines = _int("evo_lines", data["evo_lines"], 4, 12)
+    if "evo_seconds" in data:
+        s.evo_seconds = float(_int("evo_seconds", data["evo_seconds"], 1, 600))
+    if "evo_check_depth" in data:
+        s.evo_check_depth = _int("evo_check_depth", data["evo_check_depth"], 1, 40)
+    if "cache_dir" in data:
+        s.cache_dir = str(data["cache_dir"])
 
     if stockfish:
         s.stockfish_path, s.source = stockfish, "--stockfish"

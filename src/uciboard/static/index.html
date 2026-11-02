@@ -23,6 +23,10 @@
 
 <main class="desk">
   <section class="left" aria-label="Board">
+    <div class="viewbar" id="viewbar" hidden>
+      <span>Looking at a position from the graph</span>
+      <button id="btn-back" title="Back to the game (Esc)">Back to the game</button>
+    </div>
     <div id="board" class="cg-wrap"></div>
     <div class="moves" id="moves" aria-label="Moves"></div>
     <div class="status" id="status" aria-live="off">
@@ -45,16 +49,66 @@
     <div class="msg" id="msg" role="status"></div>
   </section>
 
-  <section class="right" aria-label="UCI output">
+  <section class="right" aria-label="Engine">
     <div class="pane-head">
-      <span>UCI output</span>
+      <div class="tabs" role="tablist">
+        <button role="tab" id="tab-uci" aria-selected="true" data-tab="uci">UCI output</button>
+        <button role="tab" id="tab-evo" aria-selected="false" data-tab="evo">Evolution</button>
+      </div>
       <span class="spacer"></span>
-      <label class="check"><input type="checkbox" id="follow" checked> Follow</label>
-      <button class="quiet" id="btn-clear">Clear</button>
+      <span class="uci-tools">
+        <label class="check"><input type="checkbox" id="follow" checked> Follow</label>
+        <button class="quiet" id="btn-clear">Clear</button>
+      </span>
     </div>
     <div class="pane" id="pane" tabindex="0"></div>
+
+    <div class="evo" id="evo" hidden>
+      <div class="evo-bar">
+        <button id="evo-run" class="primary" title="Analyse the game on the board and draw its evolution graph">Analyse game</button>
+        <label>Depth <input id="evo-depth" type="number" min="1" max="60" step="1" title="Search depth per position. The paper uses 20; deeper is slower."></label>
+        <label>Seconds <input id="evo-seconds" type="number" min="1" max="600" step="1" title="Most time spent on one position, whatever the depth"></label>
+        <button id="evo-pgn" title="Paste a game to analyse">Load PGN…</button>
+        <button id="evo-cancel" hidden>Cancel</button>
+        <span class="spacer"></span>
+        <button id="evo-zoom-out" class="quiet" title="Zoom out" aria-label="Zoom out">&#x2212;</button>
+        <button id="evo-zoom-in" class="quiet" title="Zoom in" aria-label="Zoom in">+</button>
+        <button id="evo-fit" class="quiet" title="Show the whole graph">Fit</button>
+        <button id="evo-start" class="quiet" title="Back to the start of the game">Start</button>
+      </div>
+      <div class="evo-progress" id="evo-progress" hidden>
+        <progress id="evo-bar" max="1" value="0"></progress><span id="evo-progress-text"></span>
+      </div>
+      <div class="evo-title" id="evo-title"></div>
+      <div class="evo-graph" id="evo-graph">
+        <svg id="evo-svg" role="img" aria-label="Evolution graph"></svg>
+        <div class="evo-empty" id="evo-empty">
+          Play a game on the board, or load a PGN, then press <b>Analyse game</b>.<br>
+          Each position of the game is searched for its best continuations; the graph shows
+          where the moves played could have led.
+        </div>
+      </div>
+      <svg id="evo-chart" class="evo-chart" role="img" aria-label="Score chart"></svg>
+      <div class="evo-info" id="evo-info" aria-live="polite"></div>
+      <details class="legend" id="evo-legend">
+        <summary>How to read it</summary>
+        <div class="legend-grid" id="legend-grid"></div>
+      </details>
+    </div>
   </section>
 </main>
+
+<dialog id="pgn-dialog">
+  <form method="dialog" class="pgn-form">
+    <label for="pgn-text">Paste a game (PGN)</label>
+    <textarea id="pgn-text" rows="12" spellcheck="false" placeholder="[Event &quot;...&quot;]&#10;&#10;1. e4 e5 2. Nf3 ..."></textarea>
+    <div class="pgn-msg" id="pgn-msg" role="status"></div>
+    <div class="pgn-buttons">
+      <button type="button" id="pgn-cancel">Cancel</button>
+      <button type="button" id="pgn-load" class="primary">Put it on the board</button>
+    </div>
+  </form>
+</dialog>
 
 <div class="promo" id="promo" hidden>
   <div class="promo-box" role="dialog" aria-label="Promote to">

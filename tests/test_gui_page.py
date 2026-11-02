@@ -6,84 +6,12 @@ becomes a POST to this test server, which calls the same Api object the desktop
 window would. Everything else (page, chessground, polling) is the real thing.
 """
 
-import json
 import os
-import shutil
-import threading
-import functools
-import http.server
 
 import pytest
 
 from uciboard import config
 from uciboard.api import Api
-from uciboard.app import STATIC
-
-playwright_sync = pytest.importorskip("playwright.sync_api")
-
-BRIDGE = """
-window.pywebview = { api: new Proxy({}, { get: (_, name) => (...args) =>
-  fetch('/rpc/' + name, { method: 'POST', body: JSON.stringify(args) }).then(r => r.json()) }) };
-"""
-
-
-def make_handler(api):
-    class Handler(http.server.SimpleHTTPRequestHandler):
-        def log_message(self, *a):
-            pass
-
-        def do_POST(self):
-            name = self.path.rsplit("/", 1)[-1]
-            length = int(self.headers.get("Content-Length", 0))
-            args = json.loads(self.rfile.read(length) or "[]")
-            if name.startswith("_") or not callable(getattr(api, name, None)):
-                self.send_error(404)
-                return
-            body = json.dumps(getattr(api, name)(*args)).encode()
-            self.send_response(200)
-            self.send_header("Content-Type", "application/json")
-            self.send_header("Content-Length", str(len(body)))
-            self.end_headers()
-            self.wfile.write(body)
-
-    return functools.partial(Handler, directory=str(STATIC))
-
-
-@pytest.fixture(scope="module")
-def browser():
-    with playwright_sync.sync_playwright() as p:
-        try:
-            b = p.chromium.launch()
-        except Exception:
-            exe = (os.environ.get("UCIBOARD_TEST_CHROME") or shutil.which("google-chrome")
-                   or shutil.which("chromium") or shutil.which("chromium-browser"))
-            if not exe:
-                pytest.skip("no browser for playwright (playwright install chromium)")
-            b = p.chromium.launch(executable_path=exe, args=["--no-sandbox"])
-        yield b
-        b.close()
-
-
-@pytest.fixture
-def make_page(browser):
-    opened = []
-
-    def make(api):
-        server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), make_handler(api))
-        threading.Thread(target=server.serve_forever, daemon=True).start()
-        page = browser.new_page(viewport={"width": 1240, "height": 820})
-        page.add_init_script(BRIDGE)
-        errors = []
-        page.on("pageerror", lambda e: errors.append(str(e)))
-        page.goto(f"http://127.0.0.1:{server.server_address[1]}/index.html")
-        opened.append((page, server, api))
-        return page, errors
-
-    yield make
-    for page, server, api in opened:
-        page.close()
-        server.shutdown()
-        api.shutdown()
 
 
 def square_center(page, square, flipped=False):
