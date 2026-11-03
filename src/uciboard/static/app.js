@@ -50,6 +50,14 @@ try {
 } catch (e) { /* storage off */ }
 $("arrows").value = String(arrowCount);
 if ($("arrows").value !== String(arrowCount)) { arrowCount = 4; $("arrows").value = "4"; }
+// Which side's moves of the line are drawn: "both", "white" or "black" (also kept in this browser).
+let arrowSide = "both";
+try {
+  const side = localStorage.getItem("arrow-side");
+  if (side === "white" || side === "black") arrowSide = side;
+} catch (e) { /* storage off */ }
+$("arrow-side").value = arrowSide;
+const drawnSide = (white) => arrowSide === "both" || (arrowSide === "white") === white;
 let lastSummary = null;
 let arrowKey = "";
 const show = { loose: true, pins: true };
@@ -205,10 +213,12 @@ function drawShapes() {
   const s = lastSummary;
   let shapes = tacticShapes();
   if (s && s.arrows && current && s.fen === current.fen && arrowCount > 0) {
-    shapes = shapes.concat(s.arrows.slice(0, arrowCount).map((a, i) => ({
-      orig: a.orig, dest: a.dest, brush: `${a.white ? "w" : "b"}${i}`,
-      label: { text: String(i + 1) },
-    })));
+    // the number is the move's place in the line, so with one side only it reads 1, 3, 5 (or 2, 4, 6)
+    s.arrows.slice(0, arrowCount).forEach((a, i) => {
+      if (!drawnSide(a.white)) return;
+      shapes.push({ orig: a.orig, dest: a.dest, brush: `${a.white ? "w" : "b"}${i}`,
+        label: { text: String(i + 1) } });
+    });
   }
   const key = JSON.stringify(shapes);
   if (key === arrowKey) return;        // nothing changed: do not redraw on every poll
@@ -240,6 +250,13 @@ for (const k of Object.keys(show)) {
     drawShapes();
   });
 }
+
+$("arrow-side").addEventListener("change", () => {
+  arrowSide = $("arrow-side").value;
+  try { localStorage.setItem("arrow-side", arrowSide); } catch (e) { /* storage off */ }
+  drawShapes();
+  renderSummary(lastSummary);
+});
 
 $("arrows").addEventListener("change", () => {
   arrowCount = Number($("arrows").value);
@@ -286,7 +303,7 @@ function renderSummary(s) {
     };
     if (white) add("no", `${n}.`);
     else if (i === 0) add("no", `${n}…`);
-    add((white ? "w" : "b") + (i < arrowCount ? "" : " far"), san);
+    add((white ? "w" : "b") + (i < arrowCount && drawnSide(white) ? "" : " far"), san);
     for (const t of (s.themes && s.themes.plies[i] ? s.themes.plies[i].tags : [])) {
       const label = TAG_TEXT[t.tag];
       if (!label) continue;

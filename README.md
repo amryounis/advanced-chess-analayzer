@@ -14,7 +14,9 @@ it keeps going until you move again, pause it, or the game ends.
 - **Summary**: evaluation (always from White's side), depth, speed and the best line in SAN.
 - **Best line as arrows**: the engine's best line is drawn on the board, numbered in play order,
   White's moves in blue and Black's in orange, fading for later moves. The *Arrows* picker
-  sets how many moves are drawn (default 4, i.e. two for each side; 0 turns them off).
+  sets how many moves are drawn (default 4, i.e. two for each side; 0 turns them off), and the
+  second picker draws both sides, White only or Black only (the count is of the line's moves, so
+  "White only" with 8 shows White's first four; the numbers keep their place in the line).
   Arrows only ever show a line for the position on the board.
 - **Controls**: Undo (Left arrow), New, Flip (F), Pause / Resume (Space), and a FEN box:
   paste a position and press Enter.

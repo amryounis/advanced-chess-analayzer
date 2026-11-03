@@ -223,3 +223,32 @@ def test_screenshot(make_page, stockfish):
     out = os.environ.get("UCIBOARD_SCREENSHOT")
     if out:
         page.screenshot(path=os.path.join(out, "board.png") if os.path.isdir(out) else out)
+
+
+@pytest.mark.engine
+def test_arrows_for_one_side_only(make_page, stockfish):
+    page, errors = make_page(engine_api(stockfish))
+    page.wait_for_function(f"{ARROWS}.length === 4")
+    page.select_option("#arrows", "6")
+    page.select_option("#arrow-side", "white")
+    page.wait_for_function(f"{ARROWS}.length === 3")
+    assert set(arrow_strokes(page)) == {"#3f6fc4"}
+    labels = page.evaluate("[...document.querySelectorAll('#board svg text')].map(t => t.textContent)")
+    assert sorted(labels) == ["1", "3", "5"]                          # the place in the line is kept
+    # the line under the board marks only White's moves in full
+    page.wait_for_function("document.querySelectorAll('#pv .w:not(.far)').length === 3")
+    assert page.locator("#pv .b:not(.far)").count() == 0
+
+    page.select_option("#arrow-side", "black")
+    page.wait_for_function(f"{ARROWS}.length === 3")
+    assert set(arrow_strokes(page)) == {"#d06a1f"}
+
+    page.select_option("#arrow-side", "both")
+    page.wait_for_function(f"{ARROWS}.length === 6")
+
+    # the choice is remembered, and follows the position after a move (Black is to move, so its arrow is first)
+    page.select_option("#arrow-side", "black")
+    page.reload()
+    page.wait_for_selector("#engine[data-state=analysing]")
+    assert page.input_value("#arrow-side") == "black"
+    assert errors == []

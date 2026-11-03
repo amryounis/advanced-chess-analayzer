@@ -34,11 +34,14 @@
         <span class="eval" id="eval">–</span>
         <span id="depth" class="muted"></span>
         <span id="nps" class="muted"></span>
-        <label class="arrows-pick" title="How many moves of the engine's best line to draw as arrows. White and Black moves alternate, so 4 is two moves each.">Arrows
+        <label class="arrows-pick" title="How many moves of the engine's best line to draw as arrows. White and Black moves alternate, so 4 is two moves each (counted from the start of the line, whichever sides are drawn).">Arrows
           <select id="arrows">
             <option value="0">off</option><option value="1">1 move</option><option value="2">2 moves</option>
             <option value="3">3 moves</option><option value="4">4 moves</option><option value="6">6 moves</option>
             <option value="8">8 moves</option><option value="10">10 moves</option>
+          </select>
+          <select id="arrow-side" title="Draw the moves of both sides, or of one side only. The numbers keep their place in the line (1, 3 for White's moves).">
+            <option value="both">both sides</option><option value="white">White only</option><option value="black">Black only</option>
           </select>
         </label>
       </div>
