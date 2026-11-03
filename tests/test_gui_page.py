@@ -172,6 +172,8 @@ def test_no_engine_shows_why_and_the_board_still_works(make_page, tmp_path):
 
 
 ARROWS = "document.querySelectorAll('#board .cg-shapes line')"
+ONLY = ("((colour, n) => { const a = [...document.querySelectorAll('#board .cg-shapes line')];"
+        " return a.length === n && a.every(l => l.getAttribute('stroke').toLowerCase() === colour); })")
 
 
 def arrow_strokes(page):
@@ -231,7 +233,7 @@ def test_arrows_for_one_side_only(make_page, stockfish):
     page.wait_for_function(f"{ARROWS}.length === 4")
     page.select_option("#arrows", "6")
     page.select_option("#arrow-side", "white")
-    page.wait_for_function(f"{ARROWS}.length === 3")
+    page.wait_for_function(f"{ONLY}('#3f6fc4', 3)")             # the shapes are redrawn a frame later
     assert set(arrow_strokes(page)) == {"#3f6fc4"}
     labels = page.evaluate("[...document.querySelectorAll('#board svg text')].map(t => t.textContent)")
     assert sorted(labels) == ["1", "3", "5"]                          # the place in the line is kept
@@ -240,7 +242,7 @@ def test_arrows_for_one_side_only(make_page, stockfish):
     assert page.locator("#pv .b:not(.far)").count() == 0
 
     page.select_option("#arrow-side", "black")
-    page.wait_for_function(f"{ARROWS}.length === 3")
+    page.wait_for_function(f"{ONLY}('#d06a1f', 3)")
     assert set(arrow_strokes(page)) == {"#d06a1f"}
 
     page.select_option("#arrow-side", "both")
