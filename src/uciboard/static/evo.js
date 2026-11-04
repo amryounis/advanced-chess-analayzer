@@ -1,13 +1,18 @@
 // The Evolution tab: draws the graph of "Chess Evolution Visualization" (Lu, Wang, Lin; IEEE TVCG 2014)
 // that Python builds (evolution.py, layout.py), and the score chart under it.
 //
-// Encoding, as in the paper's Fig. 3:
+// Encoding, as in the paper's Fig. 3, plus colour:
 //   circle  = a position of the game      square = a position the engine expects (not played)
 //   ring    = whose turn it is            fill   = the side that is better / enjoys the event
-//             (game positions only; expected positions have a black ring)
+//             (game positions only)
 //   grey fill = tie or draw               red crown = checkmate
 //   solid arrow = one move, dotted arrow = several moves shortened into one
 //   thicker arrow = the better the move compared with the alternatives from the same position
+// Colour (not in the paper): BLUE is the game that was played (its circles have a blue outline, its
+// arrows are blue), ORANGE is everything the engine expects instead (orange squares and arrows).
+// Fill and ring keep their meaning, so colour only says "played" or "alternative".
+//
+// Hovering an arrow draws its moves as arrows on the board (in the arrow's colour); clicking plays them.
 
 const SVGNS = "http://www.w3.org/2000/svg";
 const R_MAIN = 11;                   // circle radius (the layout reserves a 22 px node)
@@ -51,21 +56,23 @@ function crown(parent) {
 function buildNode(parent, spec, title) {
   const g = el("g", { class: "n" }, parent);
   if (title) el("title", {}, g).textContent = title;
-  const ring = spec.main ? COLORS[spec.turn] : "#000";
+  const ring = spec.main ? COLORS[spec.turn] : "var(--c-alt)";
   const mate = spec.event === "mate";
   if (spec.main) {
     el("circle", { class: "halo", r: R_MAIN + 4 }, g);
     el("circle", { class: "shape", r: R_MAIN, style: `fill:${ring}`, stroke: "rgba(0,0,0,.45)", "stroke-width": 0.8 }, g);
     el("circle", { r: R_MAIN - RING, style: `fill:${COLORS[spec.fill || "g"]}` }, g);
+    el("circle", { class: "outline", r: R_MAIN + 1.4, fill: "none", style: "stroke:var(--c-game)", "stroke-width": 2.2 }, g);
   } else {
     el("rect", { class: "halo", x: -H_PRED - 4, y: -H_PRED - 4, width: 2 * H_PRED + 8, height: 2 * H_PRED + 8, rx: 3 }, g);
     if (spec.fill) {
-      el("rect", { class: "shape", x: -H_PRED, y: -H_PRED, width: 2 * H_PRED, height: 2 * H_PRED, fill: "#000" }, g);
+      el("rect", { class: "shape", x: -H_PRED, y: -H_PRED, width: 2 * H_PRED, height: 2 * H_PRED,
+        style: "fill:var(--c-alt)" }, g);
       el("rect", { x: -H_PRED + 1.9, y: -H_PRED + 1.9, width: 2 * H_PRED - 3.8, height: 2 * H_PRED - 3.8,
         style: `fill:${COLORS[spec.fill]}` }, g);
     } else {          // hollow, but still easy to hit
       el("rect", { class: "shape", x: -H_PRED, y: -H_PRED, width: 2 * H_PRED, height: 2 * H_PRED,
-        fill: "#000", "fill-opacity": 0.001, stroke: "#000", "stroke-width": 1.8 }, g);
+        fill: "#000", "fill-opacity": 0.001, style: "stroke:var(--c-alt)", "stroke-width": 2 }, g);
     }
   }
   if (mate) crown(g);
@@ -103,8 +110,8 @@ function edgeShape(a, ra, b, rb, via, sw, back) {
   return { d, head: `${tip},${b.y} ${end},${b.y - hw} ${end},${b.y + hw}` };
 }
 
-function buildEdge(parent, shape, sw, dotted, title) {
-  const g = el("g", { class: "e" + (dotted ? " dotted" : "") }, parent);
+function buildEdge(parent, shape, sw, dotted, title, game = false) {
+  const g = el("g", { class: "e " + (game ? "game" : "alt") + (dotted ? " dotted" : "") }, parent);
   if (title) el("title", {}, g).textContent = title;
   const line = el("path", { class: "line", d: shape.d, "stroke-width": sw }, g);
   if (dotted) line.setAttribute("stroke-dasharray", `0.01 ${(sw * 1.7 + 3.2).toFixed(1)}`);
@@ -144,6 +151,8 @@ export function initEvolution(ctx) {
   let W = 0, H = 0;
   let needHome = false;
   let stepToken = 0;
+  let playing = false;                // an arrow is being played on the board
+  let hovered = null;                 // the arrow whose moves are drawn on the board
   let timer = null;
   let running = false;
 
@@ -163,7 +172,8 @@ export function initEvolution(ctx) {
       bwd.get(e.t).push(e.s);
     });
     selected = null;
-    stepToken++;
+    hovered = null;
+    cancelSteps();
     drawGraph();
     updateStale();
     renderTitle();
@@ -173,6 +183,40 @@ export function initEvolution(ctx) {
     drawChart();
   }
 
+  // the moves an arrow stands for, from its source position (null for an arrow to a repeated position)
+  function edgeMoves(e) {
+    if (e.back) return null;
+    if (e.collapsed) return e.steps;
+    if (!e.uci) return null;          // a graph saved by an older version
+    const b = byId.get(e.t);
+    return [{ uci: e.uci, san: b.label.split(" ").pop(), fen: b.fen }];
+  }
+
+  function cancelSteps() { stepToken++; playing = false; }
+
+  function hoverEdge(i) {
+    if (drag || dragged || playing || !data) return;
+    const e = data.edges[i], moves = edgeMoves(e);
+    if (!moves) return;
+    const a = byId.get(e.s);
+    endHover();
+    hovered = i;
+    if (edgeEls[i]) edgeEls[i].classList.add("hover");
+    const brush = e.actual ? "pg" : "pa";                // blue for the game, orange for an alternative
+    ctx.preview({
+      fen: a.fen, last: lastOf(a.uci),
+      shapes: moves.slice(0, 16).map((m, k) => ({
+        orig: m.uci.slice(0, 2), dest: m.uci.slice(2, 4), brush: `${brush}${k}`, label: { text: String(k + 1) } })),
+    });
+  }
+
+  function endHover() {
+    if (hovered === null) return;
+    if (edgeEls[hovered]) edgeEls[hovered].classList.remove("hover");
+    hovered = null;
+    ctx.endPreview();
+  }
+
   function radius(n) { return n.main !== null && n.main !== undefined ? R_MAIN : H_PRED; }
 
   function drawGraph() {
@@ -180,15 +224,26 @@ export function initEvolution(ctx) {
     nodeEls = new Map(); edgeEls = [];
     if (!data) return;
     const eg = el("g", {}, gsvg), ng = el("g", {}, gsvg);
-    const order = data.edges.map((e, i) => i).sort((i, j) => data.edges[j].w - data.edges[i].w);
+    // thick ones underneath thin ones, and the game's own arrows on top of everything else, so the
+    // played line is never covered by the dotted alternatives that cross it (nor hidden from the mouse)
+    const order = data.edges.map((e, i) => i).sort((i, j) => {
+      const a = data.edges[i], b = data.edges[j];
+      return (a.actual - b.actual) || (b.w - a.w);
+    });
     edgeEls = new Array(data.edges.length);
-    for (const i of order) {          // thick ones underneath
+    for (const i of order) {
       const e = data.edges[i], a = byId.get(e.s), b = byId.get(e.t);
       const sw = strokeOf(e.w);
       const shape = edgeShape(a, radius(a), b, radius(b), e.via, e.collapsed ? Math.min(sw, 3) : sw, e.back);
-      const title = e.collapsed ? `${e.steps.map((s) => s.san).join(" ")}  (click to play)` : b.label;
-      const g = buildEdge(eg, shape, e.back ? Math.min(sw, 2) : e.collapsed ? Math.min(sw, 3) : sw, e.collapsed, title);
+      const moves = edgeMoves(e);
+      const title = moves ? `${moves.map((s) => s.san).join(" ")}  (hover to see it on the board, click to play)` : b.label;
+      const g = buildEdge(eg, shape, e.back ? Math.min(sw, 2) : e.collapsed ? Math.min(sw, 3) : sw, e.collapsed,
+        title, e.actual);
       g.dataset.i = i;
+      if (moves) {
+        g.addEventListener("pointerenter", () => hoverEdge(i));
+        g.addEventListener("pointerleave", endHover);
+      }
       edgeEls[i] = g;
     }
     for (const n of data.nodes) {
@@ -319,7 +374,7 @@ export function initEvolution(ctx) {
     const ee = ev.target.closest(".e");
     if (ee) {
       const e = data.edges[Number(ee.dataset.i)];
-      if (e && e.collapsed) playSteps(Number(ee.dataset.i));
+      if (e && edgeMoves(e)) playEdge(Number(ee.dataset.i));
     }
   });
   $("evo-zoom-in").addEventListener("click", () => zoomAt(1.3));
@@ -334,7 +389,8 @@ export function initEvolution(ctx) {
   async function selectNode(id, opts = {}) {
     if (!data || !byId.has(id)) return;
     const n = byId.get(id);
-    stepToken++;
+    endHover();
+    cancelSteps();
     selected = id;
     applyHighlight();
     if (opts.reveal !== false) reveal(n);
@@ -347,7 +403,7 @@ export function initEvolution(ctx) {
   function clearSelection() {
     if (selected === null) return;
     selected = null;
-    stepToken++;
+    cancelSteps();
     if (data) applyHighlight();
     drawChart();
     setInfo("");
@@ -363,15 +419,17 @@ export function initEvolution(ctx) {
     setInfo(`${kind} · ${who} to move · ${scoreText(n)}${ev}`);
   }
 
-  async function playSteps(i) {
-    const e = data.edges[i], a = byId.get(e.s);
+  async function playEdge(i) {
+    const e = data.edges[i], a = byId.get(e.s), steps = edgeMoves(e);
+    endHover();                        // the board is about to change; the preview would be wrong
     const my = ++stepToken;
+    playing = true;
     selected = e.s;
     applyHighlight();
     if (edgeEls[i]) edgeEls[i].classList.add("now");
     reveal(a);
     const frames = [{ fen: a.fen, last: lastOf(a.uci) },
-      ...e.steps.map((s) => ({ fen: s.fen, last: lastOf(s.uci) }))];
+      ...steps.map((s) => ({ fen: s.fen, last: lastOf(s.uci) }))];
     const box = $("evo-info");
     for (let k = 0; k < frames.length; k++) {
       if (my !== stepToken) return;
@@ -379,18 +437,24 @@ export function initEvolution(ctx) {
       const lead = document.createElement("span");
       lead.textContent = `${a.label || "Start"} → `;
       box.append(lead);
-      e.steps.forEach((s, j) => {
+      steps.forEach((s, j) => {
         const sp = document.createElement("span");
         sp.className = "step" + (j === k - 1 ? " now" : "");
         sp.textContent = s.san;
         box.append(sp, " ");
       });
-      const st = await api().view_position(frames[k].fen, frames[k].last);
+      const last = k === frames.length - 1;
+      const target = byId.get(e.t);
+      if (last) selected = e.t;        // set before the board changes: the state handler checks it
+      // the end of the game itself is not "a position from the graph": give the board back
+      const st = last && isFinal(target) ? await api().clear_view()
+        : await api().view_position(frames[k].fen, frames[k].last);
       if (my !== stepToken) return;
       ctx.render(st);
-      if (k < frames.length - 1) await sleep(k === 0 ? STEP_MS / 2 : STEP_MS);
+      if (!last) await sleep(k === 0 ? STEP_MS / 2 : STEP_MS);
     }
     if (my !== stepToken) return;
+    playing = false;
     selected = e.t;                   // it ends on the node the edge leads to
     applyHighlight();
     if (edgeEls[i]) edgeEls[i].classList.add("now");
@@ -589,16 +653,18 @@ export function initEvolution(ctx) {
   function buildLegend() {
     const grid = $("legend-grid");
     const items = [
-      [(s) => buildNode(s, { main: true, turn: "b", fill: "w", number: 12 }), "A position of the game; the number counts the moves played. Fill: the better side (here White). Ring: whose turn it is (here Black)."],
+      [(s) => buildNode(s, { main: true, turn: "b", fill: "w", number: 12 }), "A position of the game (blue outline); the number counts the moves played. Fill: the better side (here White). Ring: whose turn it is (here Black)."],
       [(s) => buildNode(s, { main: true, turn: "w", fill: "b", number: 7 }), "Black is better, White to move."],
       [(s) => buildNode(s, { main: true, turn: "w", fill: "g", number: 3 }), "Grey: about equal."],
-      [(s) => buildNode(s, { main: false, fill: null }), "A square is a position the engine expects, not played."],
+      [(s) => buildNode(s, { main: false, fill: null }), "An orange square is a position the engine expects, not played."],
       [(s) => buildNode(s, { main: false, fill: "w", event: "check" }), "An effective check; the fill is the side giving it."],
       [(s) => buildNode(s, { main: true, turn: "b", fill: "w", event: "mate" }), "Checkmate (fill: the winner). A square with a crown is a mate the engine foresees."],
       [(s) => buildNode(s, { main: false, fill: "g", event: "draw" }), "A draw."],
-      [(s) => edgeLegend(s, 2, false), "One move. The thicker, the better the move compared with the others from the same position."],
-      [(s) => edgeLegend(s, 8, false), "A much better move than the alternatives."],
-      [(s) => edgeLegend(s, 3, true), "Several moves in one arrow. Click it to play them on the board."],
+      [(s) => edgeLegend(s, 4, false, true), "Blue arrow: a move of the game. The thicker, the better it was compared with the other moves from that position."],
+      [(s) => edgeLegend(s, 2, false, true), "A thin blue arrow: a better move was available."],
+      [(s) => edgeLegend(s, 3, false, false), "Orange arrow: a move that was not played."],
+      [(s) => edgeLegend(s, 7, false, false), "A thick orange arrow: a much better move than the others from that position."],
+      [(s) => edgeLegend(s, 3, true, false), "Dotted: several moves in one arrow. Hover to see them on the board, click to play them."],
     ];
     for (const [draw, text] of items) {
       const row = document.createElement("div");
@@ -613,9 +679,9 @@ export function initEvolution(ctx) {
     }
   }
 
-  function edgeLegend(svg, sw, dotted) {
+  function edgeLegend(svg, sw, dotted, game) {
     const shape = edgeShape({ x: -30, y: 0 }, 0, { x: 30, y: 0 }, 0, [], sw, false);
-    return buildEdge(svg, shape, sw, dotted, "");
+    return buildEdge(svg, shape, sw, dotted, "", game);
   }
 
   buildLegend();

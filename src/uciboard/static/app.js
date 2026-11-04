@@ -24,6 +24,13 @@ function arrowBrushes() {
         opacity: Math.max(0.4, 0.9 - i * 0.07), lineWidth: Math.max(6, 11 - i * 0.6) };
     }
   }
+  // an arrow of the Evolution graph shown on the board: blue is the game, orange an alternative,
+  // fading with the move's place in the line
+  for (let i = 0; i < 16; i++) {
+    const fade = { opacity: Math.max(0.5, 0.95 - i * 0.04), lineWidth: Math.max(6, 11 - i * 0.35) };
+    brushes[`pg${i}`] = { key: `pg${i}`, color: "#2f6fe0", ...fade };
+    brushes[`pa${i}`] = { key: `pa${i}`, color: "#e8821a", ...fade };
+  }
   // what the geometry of the position says (not the engine): pieces that can be won, pins, skewers
   brushes.loose = { key: "loose", color: "#d62f2f", opacity: 0.85, lineWidth: 6 };
   brushes.loose2 = { key: "loose2", color: "#d4a017", opacity: 0.85, lineWidth: 5 };
@@ -84,6 +91,7 @@ function render(st) {
     },
   });
   $("viewbar").hidden = !st.viewing;
+  $("board").dataset.fen = st.fen;     // what the board shows (the page's tests and bug reports read it)
   $("version").textContent = st.version;
   document.title = `uciboard ${st.version}`;
   if (document.activeElement !== $("fen")) $("fen").value = st.fen;
@@ -189,6 +197,25 @@ $("btn-clear").addEventListener("click", () => { pane.textContent = ""; });
 
 // ------------------------------------------------------- the best line, as arrows
 
+// Hovering an arrow of the Evolution graph: the board shows the arrow's starting position with
+// the arrow's moves drawn on it, and goes back to what it showed when the pointer leaves.
+let previewing = false;
+
+function preview({ fen, last, shapes }) {
+  previewing = true;
+  $("board").dataset.fen = fen;
+  board.set({ fen, lastMove: last || undefined, check: false, animation: { enabled: false } });
+  board.setAutoShapes(shapes);
+}
+
+function endPreview() {
+  if (!previewing) return;
+  previewing = false;
+  arrowKey = "";                       // the engine's arrows must be put back
+  if (current) render(current);
+  board.set({ animation: { enabled: true } });
+}
+
 // Everything drawn on the board: the first `arrowCount` moves of the engine's line, but only while
 // the line belongs to the position on the board (right after a move the engine is still on the
 // old one), and what the geometry says about the position (loose pieces, pins), which always does.
@@ -210,6 +237,7 @@ function tacticShapes() {
 }
 
 function drawShapes() {
+  if (previewing) return;              // an Evolution arrow is being shown: nothing else on the board
   const s = lastSummary;
   let shapes = tacticShapes();
   if (s && s.arrows && current && s.fen === current.fen && arrowCount > 0) {
@@ -425,6 +453,8 @@ async function init() {
     api: () => api,
     render,
     message: setMessage,
+    preview,
+    endPreview,
   });
   evo.onState(current);
   evo.init();

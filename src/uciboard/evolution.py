@@ -281,7 +281,7 @@ class Evolution:
         for e, r in zip(self.edges, routes):
             edges.append({
                 "s": e.src, "t": e.dst, "w": round(e.width, 2), "actual": e.actual,
-                "collapsed": e.collapsed, "back": r["back"],
+                "collapsed": e.collapsed, "back": r["back"], "uci": e.uci,
                 "via": [[round(px, 1), round(py, 1)] for px, py in r["via"]],
                 "steps": e.steps if e.collapsed else []})
         return {"start_fen": self.start_fen, "moves": self.moves, "params": asdict(self.params),
@@ -289,8 +289,11 @@ class Evolution:
                 "extent": layout["extent"]}
 
 
+GRAPH_VERSION = 2            # what the saved graphs contain; a new version leaves older files unused
+
+
 def cache_key(start_fen: str, moves: list, params: Params) -> str:
-    blob = json.dumps([start_fen, moves, asdict(params)], sort_keys=True)
+    blob = json.dumps([GRAPH_VERSION, start_fen, moves, asdict(params)], sort_keys=True)
     return hashlib.sha1(blob.encode()).hexdigest()[:20]
 
 

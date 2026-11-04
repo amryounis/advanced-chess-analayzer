@@ -107,9 +107,10 @@ cg-board square.check {
 .pv .no { color: var(--muted); }
 
 /* ---- tabs in the right-hand panel, and buttons that matter */
-:root { --graph-bg: #8fb592; --graph-ink: #0f1a13; --edge: #0d1a12; --node-white: #fafaf5; --node-black: #161616; --node-draw: #a3a9a6; }
+:root { --graph-bg: #e9ede9; --graph-ink: #1c2622; --edge: #0d1a12; --node-white: #fafaf5; --node-black: #161616; --node-draw: #a3a9a6;
+  --c-game: #1f62e0; --c-alt: #e8780f; }
 @media (prefers-color-scheme: dark) {
-  :root { --graph-bg: #46705a; --graph-ink: #f3f7f4; --edge: #e6efe8; }
+  :root { --graph-bg: #252c30; --graph-ink: #f3f7f4; --edge: #e6efe8; --c-game: #5b9bff; --c-alt: #ff9a3d; }
 }
 button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 button.primary:disabled { opacity: .5; cursor: default; }
@@ -165,6 +166,13 @@ button.primary:disabled { opacity: .5; cursor: default; }
 :is(.evo-graph, .legend) .e.dotted path.line { stroke-linecap: round; }
 :is(.evo-graph, .legend) .e polygon { fill: var(--edge); }
 :is(.evo-graph, .legend) .e .hit { fill: none; stroke: transparent; stroke-width: 12; cursor: pointer; }
+/* blue: the game that was played; orange: what the engine expects instead */
+:is(.evo-graph, .legend) .e.game path.line { stroke: var(--c-game); }
+:is(.evo-graph, .legend) .e.game polygon { fill: var(--c-game); }
+:is(.evo-graph, .legend) .e.alt path.line { stroke: var(--c-alt); }
+:is(.evo-graph, .legend) .e.alt polygon { fill: var(--c-alt); }
+.evo-graph .e.hover path.line { filter: drop-shadow(0 0 3px var(--ink)); }
+.evo-graph .e.hover polygon { filter: drop-shadow(0 0 3px var(--ink)); }
 .evo-graph .e.now path.line { stroke: #ffd24a; } .evo-graph .e.now polygon { fill: #ffd24a; }
 .evo-graph .dim { opacity: .2; }
 .evo-chart text { font: 10px var(--ui); fill: var(--muted); text-anchor: middle; }
@@ -185,12 +193,12 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
 .evo-chart .grid { stroke: var(--line); stroke-width: .5; stroke-dasharray: 2 3; }
 .evo-chart .axis { stroke: var(--muted); stroke-width: .8; }
 .evo-chart .band { stroke-width: 1; opacity: .75; }
-.evo-chart .band.w { fill: #f3efe0; stroke: #6f6a58; }
-.evo-chart .band.b { fill: #3c3c3c; stroke: #111; }
-.evo-chart .score-line { fill: none; stroke: var(--muted); stroke-width: 1; opacity: .7; }
-.evo-chart .dot { stroke-width: 1.4; }
-.evo-chart .dot.w { fill: #fff; stroke: #333; }
-.evo-chart .dot.b { fill: #181818; stroke: #ddd; }
+.evo-chart .band.w { fill: #f3efe0; stroke: var(--c-alt); }
+.evo-chart .band.b { fill: #3c3c3c; stroke: var(--c-alt); }
+.evo-chart .score-line { fill: none; stroke: var(--c-game); stroke-width: 1.4; opacity: .8; }
+.evo-chart .dot { stroke: var(--c-game); stroke-width: 2.2; }
+.evo-chart .dot.w { fill: #fff; }
+.evo-chart .dot.b { fill: #181818; }
 .evo-chart .cur { fill: color-mix(in srgb, var(--accent) 16%, transparent); stroke: var(--accent); stroke-width: 1; }
 .evo-chart .hit { fill: transparent; cursor: pointer; }
 .evo > :not(.evo-graph) { flex: none; }

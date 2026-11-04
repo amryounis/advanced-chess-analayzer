@@ -135,3 +135,92 @@ def test_screenshot_for_a_look(make_page, stockfish, tmp_path):
     analyse(page, "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 6. Re1 b5 7. Bb3 d6 *")
     page.wait_for_timeout(500)
     page.screenshot(path=os.path.join(out, "evolution.png"))
+
+
+# ------------------------------------------------- colour, hover preview, autoplay
+
+def graph(page):
+    return page.evaluate("window.pywebview.api.evolution_result()")
+
+
+def point_on(page, selector, which=0):
+    """A point on screen that lies on the drawn stroke of an arrow, for a real mouse."""
+    return page.evaluate("""([sel, n]) => {
+        const path = document.querySelectorAll(sel)[n].querySelector('path.line');
+        const p = path.getPointAtLength(path.getTotalLength() / 2);
+        const m = path.getScreenCTM();
+        return { x: m.a * p.x + m.c * p.y + m.e, y: m.b * p.x + m.d * p.y + m.f };
+    }""", [selector, which])
+
+
+def game_edge(page, ply):
+    """Index of the arrow of the game that leads to the position after `ply` half-moves."""
+    data = graph(page)
+    nodes = {n["id"]: n for n in data["nodes"]}
+    return next(i for i, e in enumerate(data["edges"]) if e["actual"] and nodes[e["t"]]["main"] == ply)
+
+
+def shapes(page):
+    return page.evaluate("[...document.querySelectorAll('#board .cg-shapes line')].map(l => l.getAttribute('stroke').toLowerCase())")
+
+
+def test_the_game_is_blue_and_the_alternatives_orange(make_page, stockfish, tmp_path):
+    page, errors = make_page(quick_api(stockfish, tmp_path))
+    analyse(page)
+    assert page.locator("#evo-svg .e.game").count() == 7            # the seven moves of the game
+    assert page.locator("#evo-svg .e.alt").count() > 0
+    assert page.locator("#evo-svg circle.outline").count() == 8     # blue outline on each game position
+    colour = lambda sel: page.evaluate(                             # noqa: E731
+        "(s) => getComputedStyle(document.querySelector(s)).stroke", sel)
+    assert colour("#evo-svg .e.game path.line") != colour("#evo-svg .e.alt path.line")
+    assert colour("#evo-svg .e.game path.line") == colour("#evo-svg circle.outline")
+    assert not errors, errors
+
+
+def test_hovering_an_arrow_draws_its_moves_on_the_board_and_leaving_restores(make_page, stockfish, tmp_path):
+    page, errors = make_page(quick_api(stockfish, tmp_path))
+    analyse(page)
+    final_fen = page.get_attribute("#board", "data-fen")
+    data = graph(page)
+    nodes = {n["id"]: n for n in data["nodes"]}
+    i, edge = next((i, e) for i, e in enumerate(data["edges"]) if e["collapsed"])
+    page.locator(f"#evo-svg .e[data-i='{i}']").dispatch_event("pointerenter")
+    page.wait_for_function(f"document.querySelectorAll('#board .cg-shapes line').length === {len(edge['steps'])}")
+    assert page.get_attribute("#board", "data-fen") == nodes[edge["s"]]["fen"]
+    assert set(shapes(page)) == {"#e8821a"}                         # an alternative: orange
+    page.locator(f"#evo-svg .e[data-i='{i}']").dispatch_event("pointerleave")
+    page.wait_for_function("document.querySelectorAll('#board .cg-shapes line').length === 0")
+    assert page.get_attribute("#board", "data-fen") == final_fen
+    assert not errors, errors
+
+
+def test_a_real_mouse_over_a_game_arrow_shows_one_blue_arrow(make_page, stockfish, tmp_path):
+    page, errors = make_page(quick_api(stockfish, tmp_path))
+    analyse(page)
+    final_fen = page.get_attribute("#board", "data-fen")
+    p = point_on(page, f"#evo-svg .e[data-i='{game_edge(page, 1)}']")   # the first move of the game
+    page.mouse.move(p["x"], p["y"])
+    page.wait_for_function("document.querySelectorAll('#board .cg-shapes line').length === 1")
+    assert shapes(page) == ["#2f6fe0"]
+    assert page.get_attribute("#board", "data-fen").startswith("rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR")
+    page.mouse.move(5, 5)
+    page.wait_for_function("document.querySelectorAll('#board .cg-shapes line').length === 0")
+    assert page.get_attribute("#board", "data-fen") == final_fen
+    assert not errors, errors
+
+
+def test_clicking_a_single_move_plays_it_and_the_last_move_gives_the_game_back(make_page, stockfish, tmp_path):
+    page, errors = make_page(quick_api(stockfish, tmp_path))
+    analyse(page)
+    p = point_on(page, f"#evo-svg .e[data-i='{game_edge(page, 1)}']")
+    page.mouse.click(p["x"], p["y"])
+    page.wait_for_function("document.getElementById('board').dataset.fen.startsWith('rnbqkbnr/pppppppp/8/8/4P3')")
+    assert page.is_visible("#viewbar")
+    assert "e4" in page.inner_text("#evo-info")
+
+    # the last move of the game ends on the game itself, not on "a position from the graph"
+    last = game_edge(page, len(graph(page)["moves"]))
+    page.locator(f"#evo-svg .e[data-i='{last}']").dispatch_event("click")
+    page.wait_for_selector("#viewbar", state="hidden", timeout=10000)
+    assert page.locator("#evo-svg .n.sel").count() == 1
+    assert not errors, errors

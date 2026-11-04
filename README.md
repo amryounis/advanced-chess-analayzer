@@ -67,12 +67,18 @@ the graph shows where the moves played could have led.
 
 How to read it (the *How to read it* box under the graph has the same legend):
 
+- **Colour**: **blue** is the game that was played (arrows, the outline of its circles, the score
+  line), **orange** is everything the engine suggests instead (arrows, squares, the range bars).
+  Blue arrows are drawn on top of orange ones.
 - **Circle** = a position of the game, numbered by moves played. **Square** = a position the
-  engine expects, not played (hollow unless it carries an event).
+  engine expects, not played (orange outline; filled when it carries an event).
 - **Ring** = whose turn it is (game positions). **Fill** = the better side, grey when equal or drawn.
   A **red crown** is checkmate; an *effective* check (see below) fills the node with the side giving it.
-- **Solid arrow** = one move, **dotted arrow** = several moves shortened into one: click it and the
-  moves are played on the board one after the other.
+- **Solid arrow** = one move, **dotted arrow** = several moves shortened into one.
+- **Hover an arrow** and its moves are drawn on the board as numbered arrows (blue for the game,
+  orange for an alternative), starting from the position the arrow leaves; the board's own
+  engine arrows are hidden meanwhile. **Click an arrow** and its moves are played on the board one
+  after the other. (An arrow back to a position already shown has no moves to preview or play.)
 - **Thicker arrow** = a better move compared with the alternatives from the same position
   (thickness is only comparable between arrows leaving the same position).
 - **Score chart** under the graph, aligned with its columns: the dot is the score of the move
@@ -86,7 +92,7 @@ How to read it (the *How to read it* box under the graph has the same legend):
 Settings on the tab: **Depth** and **Seconds** (the most time spent on one position). The paper
 uses depth 20, which can take many minutes for a long game; the default is 16. On a two-core test
 machine a 12-move game took about 40 seconds at the defaults. Finished analyses are kept (see
-`cache_dir`) and reused when the same game is analysed again with the same settings. The live
+`cache_dir`) and reused when the same game is analysed again with the same settings (a release that changes what a saved graph contains, like 0.5.0, analyses the game again once). The live
 analysis of the board pauses while the job runs and resumes afterwards; *Cancel* stops it quickly.
 
 More settings in uciboard's config file:
