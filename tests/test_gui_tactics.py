@@ -65,3 +65,19 @@ def test_screenshot_for_a_look(make_page, stockfish):
                         "r1bq1rk1/ppp2ppp/2n2n2/3pp3/1b1P4/2NBPN2/PPP2PPP/R1BQ1RK1 w - - 0 7")
     page.wait_for_timeout(2500)
     page.screenshot(path=os.path.join(out, "tactics.png"))
+
+
+def test_the_control_heat_map_follows_the_toggle_and_the_board_turning(make_page, stockfish):
+    page, errors = page_with(make_page, stockfish, "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1")
+    assert not page.is_checked("#show-heat")
+    assert page.locator("#board .heat:visible").count() == 0
+    page.check("#show-heat")
+    page.wait_for_selector("#board .heat i.w")
+    cells = "[...document.querySelectorAll('#board .heat i')].map(i => i.className)"
+    shown = page.evaluate(cells)
+    assert shown[42] == "w" and shown[21] == "b"                   # c3 is White's, c6 is Black's
+    page.click("#btn-flip")
+    page.wait_for_function("document.querySelectorAll('#board .heat i')[21].className === 'w'")
+    page.uncheck("#show-heat")
+    page.wait_for_function("document.querySelector('#board .heat').hidden")
+    assert not errors, errors

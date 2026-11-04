@@ -23,6 +23,10 @@ it keeps going until you move again, pause it, or the game ends.
 
 - **Tactics**: pieces that can be won, pins and skewers drawn on the board, and labels (fork,
   discovered or double check, sacrifice) on the moves of the engine's line. See below.
+- **Positional graph measures**: the position as a graph of its 64 squares and their moves, after
+  [ChessY](https://doi.org/10.1016/j.softx.2018.12.004) (Rudolph-Lilith, SoftwareX 2019): a
+  square-control heat map on the board, and control, mobility, offensiveness, defensiveness and
+  more for both sides along the game, under the Evolution score chart. See below.
 - **Evolution tab**: the graph of [Chess Evolution Visualization](https://doi.org/10.1109/TVCG.2014.2299803)
   (Lu, Wang, Lin; IEEE TVCG 2014) for the game on the board. See below.
 
@@ -41,6 +45,10 @@ Two layers, kept apart so you can tell what Stockfish thinks from what is simply
   side may stop, a pinned piece may only capture along its pin, and a king only takes an unguarded
   piece. So a pawn attacking a queen that is defended once is flagged (it wins the queen for a pawn),
   and an even trade is not.
+- **Square control** (off by default): every square tinted teal where White has more attackers than
+  Black, rose where Black has, stronger with the difference; hover a square for the numbers.
+  It counts attackers, so a pawn's diagonal counts even on an empty square, which is not what the
+  ChessY *control* measure counts (see *Positional graph measures*).
 - **Pins and skewers**: purple (pin, absolute or to something worth more) and teal (skewer) arrows
   from the pinning piece to the piece behind. python-chess's own `is_pinned` only knows pins to the
   king, so the others are found by looking along the line. A pin is not reported if the pinning
@@ -104,6 +112,32 @@ evo_seconds = 20       # most time on one position
 evo_check_depth = 10   # depth of the quick searches that judge a check
 cache_dir = ""         # where finished analyses are kept (default: beside the config file)
 ```
+
+### Positional graph measures (ChessY)
+
+Under the score chart, a second chart plots one measure for White (teal) and Black (rose) after
+every move of the game, in the same columns as the graph and the score chart; click a column to
+jump to that position. Pick the measure from the list. They come from the positional chess graph
+of ChessY: a node for each square, an edge for each move a piece can make (the side not to move
+is treated as if it were to move; pins are respected):
+
+| Measure | Meaning |
+| --- | --- |
+| Control | squares the side can move to that are empty or hold an enemy piece, as a share of those squares |
+| Mobility | empty squares the side can move to, as a share of the empty squares |
+| Connectedness | moves and guarded pieces, as a share of a fully connected graph (64 × 63) |
+| Offensiveness | pieces that can capture an enemy piece (a count) |
+| Defensiveness | pieces that guard a piece of their own colour (a count) |
+| Reach | different squares the side's pieces reach, per piece |
+| Material | pawn 1, knight and bishop 3, rook 5, queen 9 (not in the paper; its author found keeping more and higher-value pieces together with high connectivity goes with winning) |
+
+How the paper was read: it is a short software note, and I filled these gaps myself. A piece cannot
+move onto its own piece, yet *defensiveness* counts edges to own pieces, so guarded pieces are
+added as edges (they count towards connectedness and reach, not towards control or mobility).
+The paper gives no denominators for control and mobility; the shares above are the natural ones.
+*Dominance* is left out because its definition in the paper is garbled. The measures describe the
+position; they are not an evaluation. They are worked out when a graph is loaded and are not kept
+in the saved analysis.
 
 ### Where this differs from the paper
 
@@ -178,6 +212,7 @@ skipped when there is none. The browser tests also need `playwright install chro
 | `uci.py` | Drives the engine process; infinite search that can jump to a new position, and drops the old search's output when it does |
 | `api.py` | What the page calls: board, moves, polling of the output, summary and the best line's arrows; PGN loading, viewing a position, the Evolution job |
 | `tactics.py` | Exchange evaluation, loose pieces, pins and skewers, and the labels and net material of an engine line (python-chess only) |
+| `posgraph.py` | The positional chess graph of a position (ChessY): edges, the measures, and the heat map's control counts |
 | `evolution.py` | The paper's pipeline: sequences, decision tree, merging, shortening, events, edge thickness, score chart |
 | `layout.py` | Equation (1): columns, virtual nodes, ordering and vertical positions |
 | `config.py` | Where Stockfish is and how it runs |

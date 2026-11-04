@@ -133,6 +133,8 @@ def test_the_job_produces_the_graph_and_gives_the_engine_back(stockfish, tmp_pat
         assert mains[-1]["event"] == "mate" and mains[-1]["cp"] == 30000   # White mated Black
         assert all(abs(n["y"]) < 0.5 for n in mains)
         assert len(data["chart"]) == 7 and data["stats"]["shown"] <= data["stats"]["merged"]
+        assert len(data["metrics"]) == 8 and "defensiveness" in data["metric_names"]   # one per position
+        assert data["metrics"][-1]["b"]["material"] == 38 and data["metrics"][0]["w"]["material"] == 39
         ids = {n["id"] for n in data["nodes"]}
         assert all(e["s"] in ids and e["t"] in ids for e in data["edges"])
         assert any(e["actual"] for e in data["edges"]) and all(e["w"] >= 1 for e in data["edges"])

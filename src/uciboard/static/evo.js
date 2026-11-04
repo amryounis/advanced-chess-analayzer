@@ -519,7 +519,84 @@ export function initEvolution(ctx) {
       el("rect", { class: "hit", "data-ply": r.ply, x: x - COL_W * view.scale / 2, y: 0,
         width: COL_W * view.scale, height: h }, csvg);
     }
+    drawMetrics();
   }
+
+  // -------------------------------------------------------------- the measures strip (ChessY)
+
+  const METRIC_HELP = {
+    control: "share of the squares a side could move to (empty or enemy-held) that it can actually move to",
+    mobility: "share of the empty squares a side can move to",
+    connectedness: "moves and guarded pieces, as a share of a fully connected graph (64 × 63)",
+    offensiveness: "how many pieces of the side can capture an enemy piece",
+    defensiveness: "how many pieces of the side guard a piece of their own",
+    reach: "different squares a side's pieces reach, per piece",
+    material: "pieces counted pawn 1, knight/bishop 3, rook 5, queen 9",
+  };
+  const msvg = $("evo-metrics"), mpick = $("metric-pick");
+  let metric = "control";
+  try { metric = localStorage.getItem("evo-metric") || metric; } catch (e) { /* storage off */ }
+
+  function drawMetrics() {
+    const rows = data && data.metrics;
+    const none = !rows || !rows.length;
+    $("metric-bar").hidden = none;
+    msvg.toggleAttribute("hidden", none);          // an svg has no .hidden property
+    if (none) return;
+    if (!mpick.options.length) {
+      for (const name of data.metric_names) mpick.add(new Option(name[0].toUpperCase() + name.slice(1), name));
+    }
+    if (!data.metric_names.includes(metric)) metric = data.metric_names[0];
+    mpick.value = metric;
+    $("metric-help").textContent = METRIC_HELP[metric] || "";
+    msvg.textContent = "";
+    const w = msvg.clientWidth, h = msvg.clientHeight;
+    if (w <= 0 || h <= 0) return;
+    msvg.setAttribute("viewBox", `0 0 ${w} ${h}`);
+    const top = 12, bottom = h - 12;
+    const all = rows.flatMap((r) => [r.w[metric], r.b[metric]]);
+    let lo = Math.min(...all), hi = Math.max(...all);
+    if (hi - lo < 1e-9) { lo -= 0.5; hi += 0.5; }
+    const Y = (v) => bottom - ((v - lo) / (hi - lo)) * (bottom - top);
+    const X = (ply) => ((byId.get(mainId[ply]) || { x: ply * COL_W }).x - view.tx) * view.scale;
+    const fmtv = (v) => (Number.isInteger(v) ? String(v) : v.toFixed(1));
+    const pct = metric === "control" || metric === "mobility" || metric === "connectedness";
+    const label = (v) => (pct ? `${(v * 100).toFixed(metric === "connectedness" ? 1 : 0)}%` : fmtv(v));
+    for (const [v, y] of [[hi, top], [lo, bottom]]) {
+      el("line", { class: "grid", x1: 0, x2: w, y1: y, y2: y }, msvg);
+      el("text", { class: "ylab", x: 3, y: y - 2 }, msvg).textContent = label(v);
+    }
+    if (selected !== null && byId.get(selected) && byId.get(selected).main !== null) {
+      const ply = byId.get(selected).main;
+      el("rect", { class: "cur", x: X(ply) - COL_W * view.scale / 2, y: 1, width: COL_W * view.scale, height: h - 2, rx: 4 }, msvg);
+    }
+    for (const side of ["w", "b"]) {
+      const pts = rows.map((r, ply) => [X(ply), Y(r[side][metric])]);
+      el("path", { class: `mline ${side}`, d: "M" + pts.map((p) => `${p[0].toFixed(1)} ${p[1].toFixed(1)}`).join(" L") }, msvg);
+      pts.forEach(([x, y], ply) => {
+        if (x < -20 || x > w + 20 || COL_W * view.scale < 9) return;
+        const c = el("circle", { class: `mdot ${side}`, cx: x, cy: y, r: 2.6 }, msvg);
+        el("title", {}, c).textContent =
+          `${side === "w" ? "White" : "Black"} · after ply ${ply} · ${metric} ${label(rows[ply][side][metric])}`;
+      });
+    }
+    rows.forEach((_, ply) => {
+      const x = X(ply);
+      if (x < -20 || x > w + 20) return;
+      el("rect", { class: "hit", "data-ply": ply, x: x - COL_W * view.scale / 2, y: 0, width: COL_W * view.scale, height: h }, msvg);
+    });
+  }
+
+  mpick.addEventListener("change", () => {
+    metric = mpick.value;
+    try { localStorage.setItem("evo-metric", metric); } catch (e) { /* storage off */ }
+    drawMetrics();
+  });
+  msvg.addEventListener("click", (ev) => {
+    const t = ev.target.closest("[data-ply]");
+    if (t && data && mainId[Number(t.dataset.ply)] !== undefined) selectNode(mainId[Number(t.dataset.ply)]);
+  });
+  new ResizeObserver(drawMetrics).observe(msvg);
 
   csvg.addEventListener("click", (ev) => {
     const t = ev.target.closest("[data-ply]");

@@ -19,7 +19,7 @@ from typing import Optional
 import chess
 import chess.pgn
 
-from . import __version__, config, evolution, tactics
+from . import __version__, config, evolution, posgraph, tactics
 from .layout import layout as run_layout
 from .uci import EngineError, UciEngine, parse_info
 
@@ -268,6 +268,7 @@ class Api:
             "over": self._result_text(shown),
             "info": dict(self._info),
             "tactics": self._tactics(shown),
+            "control": posgraph.control_map(shown),
         }
 
     @staticmethod
@@ -502,6 +503,10 @@ class Api:
                 except OSError:
                     pass                                   # not being able to save is not an error
             data["info"] = info
+            # not kept with the saved graph: it costs nothing to work out, and saved graphs made
+            # before the measures existed get them too
+            data["metrics"] = posgraph.game_metrics(data["start_fen"], data["moves"])
+            data["metric_names"] = posgraph.METRICS
             self._evo_result = data
             self._set_evo(state="done", message="done")
         except evolution.Cancelled:

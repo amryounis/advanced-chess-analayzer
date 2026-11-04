@@ -224,3 +224,22 @@ def test_clicking_a_single_move_plays_it_and_the_last_move_gives_the_game_back(m
     page.wait_for_selector("#viewbar", state="hidden", timeout=10000)
     assert page.locator("#evo-svg .n.sel").count() == 1
     assert not errors, errors
+
+
+def test_the_measures_strip_follows_the_game_and_the_picker(make_page, stockfish, tmp_path):
+    page, errors = make_page(quick_api(stockfish, tmp_path))
+    ready(page)
+    assert page.is_hidden("#evo-metrics") and page.is_hidden("#metric-bar")
+    analyse(page)
+    page.wait_for_selector("#evo-metrics .mline.w")
+    assert page.locator("#evo-metrics .mline").count() == 2
+    assert page.locator("#evo-metrics .hit").count() == 8                 # the start and seven moves
+    assert page.locator("#metric-pick option").count() == 7
+    before = page.get_attribute("#evo-metrics .mline.w", "d")
+    page.select_option("#metric-pick", "material")
+    page.wait_for_function(
+        "(d) => document.querySelector('#evo-metrics .mline.w').getAttribute('d') !== d", arg=before)
+    assert "pieces counted" in page.inner_text("#metric-help")
+    page.locator("#evo-metrics .hit").nth(2).dispatch_event("click")      # after 1. e4 e5
+    page.wait_for_function("document.getElementById('board').dataset.fen.includes('4p3/4P3')")
+    assert not errors, errors

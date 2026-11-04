@@ -67,7 +67,7 @@ $("arrow-side").value = arrowSide;
 const drawnSide = (white) => arrowSide === "both" || (arrowSide === "white") === white;
 let lastSummary = null;
 let arrowKey = "";
-const show = { loose: true, pins: true };
+const show = { loose: true, pins: true, heat: false };
 for (const k of Object.keys(show)) {
   try {
     const v = localStorage.getItem("show-" + k);
@@ -157,6 +157,7 @@ function askPromotion() {
 function setOrientation(o) {
   orientation = o;
   board.set({ orientation: o });
+  drawHeat();
 }
 
 // ------------------------------------------------------------- UCI output
@@ -236,7 +237,36 @@ function tacticShapes() {
   return shapes;
 }
 
+// The square-control heat map: a grid laid over the board, teal where White attacks a square more
+// often than Black, rose where Black does; the stronger the colour, the bigger the difference.
+let heatKey = "";
+function drawHeat() {
+  const key = previewing || !show.heat || !current ? "" : JSON.stringify([current.control, orientation]);
+  if (key === heatKey) return;
+  heatKey = key;
+  let grid = $("board").querySelector(".heat");
+  if (!key) { if (grid) grid.hidden = true; return; }
+  if (!grid) {
+    grid = document.createElement("div");
+    grid.className = "heat";
+    for (let i = 0; i < 64; i++) grid.append(document.createElement("i"));
+    $("board").append(grid);
+  }
+  grid.hidden = false;
+  const cells = grid.children;
+  for (let i = 0; i < 64; i++) {
+    const col = i % 8, row = Math.floor(i / 8);               // screen position, top left first
+    const file = orientation === "white" ? col : 7 - col;
+    const rank = orientation === "white" ? 7 - row : row;
+    const net = current.control[String.fromCharCode(97 + file) + (rank + 1)] || 0;
+    cells[i].className = net > 0 ? "w" : net < 0 ? "b" : "";
+    cells[i].style.setProperty("--k", String(Math.min(Math.abs(net), 4) / 4));
+    cells[i].title = net ? `${net > 0 ? "White" : "Black"} +${Math.abs(net)}` : "";
+  }
+}
+
 function drawShapes() {
+  drawHeat();
   if (previewing) return;              // an Evolution arrow is being shown: nothing else on the board
   const s = lastSummary;
   let shapes = tacticShapes();
