@@ -238,3 +238,23 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
 .metric-bar .key::before { content: ""; width: 14px; height: 0; border-top: 2.5px solid; }
 .metric-bar .key.w::before { border-color: #1b9e8a; }
 .metric-bar .key.b::before { border-color: #c2417a; }
+
+/* stepping through the game */
+.nav { display: flex; align-items: center; gap: 4px; margin: 4px 0 2px; }
+.nav button { padding: 2px 10px; min-width: 34px; }
+.nav button:disabled { opacity: .4; cursor: default; }
+.nav .muted { margin-left: 8px; font-size: 12px; }
+.moves .mv { cursor: pointer; border-radius: 3px; }
+.moves .mv:hover { background: var(--hover, rgba(127, 127, 127, .18)); }
+.moves .mv.cur { background: var(--c-game-soft, rgba(47, 111, 224, .18)); }
+.moves .mv.later { color: var(--muted); }
+
+/* pawn structure, laid over the board */
+.struct { position: absolute; inset: 0; display: grid; grid-template: repeat(8, 1fr) / repeat(8, 1fr);
+  pointer-events: none; z-index: 2; }
+.struct[hidden] { display: none; }
+.struct i.f-open { background: rgba(214, 160, 20, .24); }
+.struct i.f-half { background: rgba(214, 160, 20, .10); }
+.struct i.p-isolated { box-shadow: inset 0 0 0 3px #b5532a; }
+.struct i.p-doubled { outline: 3px dashed #7a3fb0; outline-offset: -3px; }
+.t-struct::before { background: #d6a014; border-radius: 2px !important; }

@@ -243,3 +243,17 @@ def test_the_measures_strip_follows_the_game_and_the_picker(make_page, stockfish
     page.locator("#evo-metrics .hit").nth(2).dispatch_event("click")      # after 1. e4 e5
     page.wait_for_function("document.getElementById('board').dataset.fen.includes('4p3/4P3')")
     assert not errors, errors
+
+
+def test_the_export_dialog_shows_the_annotated_game(make_page, stockfish, tmp_path):
+    page, errors = make_page(quick_api(stockfish, tmp_path))
+    ready(page)
+    analyse(page)
+    page.click("#evo-export")
+    page.wait_for_selector("#export-dialog[open]")
+    text = page.input_value("#export-text")
+    assert "[%eval" in text and "Qxf7#" in text
+    assert "With the engine's scores" in page.inner_text("#export-msg")
+    page.click("#export-close")
+    page.wait_for_function("!document.getElementById('export-dialog').open")
+    assert not errors, errors

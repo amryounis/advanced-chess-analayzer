@@ -19,7 +19,7 @@ from typing import Optional
 import chess
 import chess.pgn
 
-from . import __version__, config, evolution, posgraph, tactics
+from . import __version__, config, evolution, pgnexport, posgraph, structure, tactics
 from .layout import layout as run_layout
 from .uci import EngineError, UciEngine, parse_info
 
@@ -57,6 +57,7 @@ class Api:
         self._summary: dict = {}
         self._view: Optional[chess.Board] = None     # a position being looked at, not part of the game
         self._view_last: Optional[list] = None
+        self._ply: Optional[int] = None              # how many moves of the game are on the board; None = all
         self._info: dict = {}                        # who played, from a loaded PGN
         self._evo_lock = threading.Lock()
         self._theme_cache: dict = {}
@@ -108,9 +109,24 @@ class Api:
         if engine:
             engine.quit()
 
+    def _cursor(self) -> int:
+        """How many moves of the game are on the board."""
+        total = len(self._board.move_stack)
+        return total if self._ply is None else max(0, min(self._ply, total))
+
+    def _game_board(self) -> chess.Board:
+        """The game as far as the cursor (the whole game unless someone stepped back)."""
+        n = self._cursor()
+        if n == len(self._board.move_stack):
+            return self._board
+        b = self._board.copy(stack=True)
+        while len(b.move_stack) > n:
+            b.pop()
+        return b
+
     def _shown(self) -> chess.Board:
-        """The position on the board: the game, or one being looked at."""
-        return self._view if self._view is not None else self._board
+        """The position on the board: the game up to the cursor, or one being looked at."""
+        return self._view if self._view is not None else self._game_board()
 
     def _restart_analysis(self) -> None:
         # called with the lock held
@@ -235,6 +251,7 @@ class Api:
     def _state(self) -> dict:
         board = self._board
         shown = self._shown()
+        at = self._game_board()
         replay = chess.Board(self._root_fen)
         sans = []
         for move in board.move_stack:
@@ -242,13 +259,13 @@ class Api:
             replay.push(move)
         dests: dict = {}
         if self._view is None:                      # nothing can be played while looking at a position
-            for move in board.legal_moves:
+            for move in at.legal_moves:
                 dests.setdefault(chess.square_name(move.from_square), []).append(
                     chess.square_name(move.to_square))
         if self._view is not None:
             last = self._view_last
-        elif board.move_stack:
-            mv = board.peek()
+        elif at.move_stack:
+            mv = at.peek()
             last = [chess.square_name(mv.from_square), chess.square_name(mv.to_square)]
         else:
             last = None
@@ -263,12 +280,14 @@ class Api:
             "last": last,
             "check": shown.is_check(),
             "moves": sans,
+            "ply": self._cursor(),
             "first_move_number": root.fullmove_number,
             "first_is_black": root.turn == chess.BLACK,
             "over": self._result_text(shown),
             "info": dict(self._info),
             "tactics": self._tactics(shown),
             "control": posgraph.control_map(shown),
+            "structure": structure.analyse(shown),
         }
 
     @staticmethod
@@ -298,10 +317,10 @@ class Api:
                 frm, to = chess.parse_square(orig), chess.parse_square(dest)
             except ValueError:
                 return False
-            piece = self._board.piece_at(frm)
+            piece = self._game_board().piece_at(frm)
             return bool(piece and piece.piece_type == chess.PAWN
                         and chess.square_rank(to) in (0, 7)
-                        and chess.Move(frm, to, chess.QUEEN) in self._board.legal_moves)
+                        and chess.Move(frm, to, chess.QUEEN) in self._game_board().legal_moves)
 
     def move(self, orig: str, dest: str, promotion: Optional[str] = None) -> dict:
         """Play a move for whoever is to move. An illegal move changes nothing."""
@@ -314,23 +333,62 @@ class Api:
                 move = chess.Move(chess.parse_square(orig), chess.parse_square(dest), promo)
             except ValueError:
                 return {**self._state(), "rejected": True}
-            if move not in self._board.legal_moves:
+            at = self._game_board()
+            if move not in at.legal_moves:
                 return {**self._state(), "rejected": True}
+            n = self._cursor()
+            if n < len(self._board.move_stack):
+                if self._board.move_stack[n] == move:      # the game's own next move: just step on
+                    self._ply = n + 1
+                    self._restart_analysis()
+                    return self._state()
+                del_to = n                                 # a different move: the rest of the game goes
+                while len(self._board.move_stack) > del_to:
+                    self._board.pop()
             self._board.push(move)
+            self._ply = None
             self._restart_analysis()
             return self._state()
 
     def undo(self) -> dict:
+        """Take back the move on the board; the moves after it (if someone stepped back) go too."""
         with self._lock:
             self._view = None
-            if self._board.move_stack:
-                self._board.pop()
-                self._restart_analysis()
+            n = self._cursor()
+            if n:
+                while len(self._board.move_stack) > n - 1:
+                    self._board.pop()
+                self._ply = None
+            self._restart_analysis()
             return self._state()
+
+    def goto_ply(self, ply: int) -> dict:
+        """Show the game after `ply` moves (0 is the start). The moves stay: this is only looking."""
+        with self._lock:
+            try:
+                n = int(ply)
+            except (TypeError, ValueError):
+                return {**self._state(), "rejected": True}
+            total = len(self._board.move_stack)
+            n = max(0, min(n, total))
+            self._view, self._view_last = None, None
+            self._ply = None if n == total else n
+            self._restart_analysis()
+            return self._state()
+
+    def step(self, delta: int) -> dict:
+        """One move back or forward from where the board is."""
+        with self._lock:
+            try:
+                d = int(delta)
+            except (TypeError, ValueError):
+                return {**self._state(), "rejected": True}
+            n = self._cursor() + d
+        return self.goto_ply(n)
 
     def reset(self) -> dict:
         with self._lock:
-            self._view, self._info = None, {}
+            self._view, self._info, self._ply = None, {}, None
             self._board = chess.Board()
             self._root_fen = self._board.fen()
             self._restart_analysis()
@@ -346,7 +404,7 @@ class Api:
             if not board.is_valid():
                 return {**self._state(), "rejected": True,
                         "message": "That position is not legal."}
-            self._view, self._info = None, {}
+            self._view, self._info, self._ply = None, {}, None
             self._board = board
             self._root_fen = board.fen()
             self._restart_analysis()
@@ -377,7 +435,7 @@ class Api:
         info = {"white": h.get("White", ""), "black": h.get("Black", ""), "event": h.get("Event", ""),
                 "date": h.get("Date", ""), "result": h.get("Result", "")}
         with self._lock:
-            self._view = None
+            self._view, self._ply = None, None
             self._board, self._root_fen = board, start.fen()
             self._info = {k: v for k, v in info.items() if v.strip("?. ")}    # drop "?" placeholders
             self._restart_analysis()
@@ -385,6 +443,26 @@ class Api:
         if game.errors:
             st["message"] = f"The game was read up to an illegal move ({game.errors[0]})."
         return st
+
+    def export_pgn(self) -> dict:
+        """The game as PGN, with the Evolution analysis in the comments if it is for this game."""
+        with self._lock:
+            start_fen = self._root_fen
+            moves = [m.uci() for m in self._board.move_stack]
+            info = dict(self._info)
+            evo = self._evo_result
+        if not moves:
+            return {"rejected": True, "message": "There is no game to export yet."}
+        sans, b = [], chess.Board(start_fen)
+        for u in moves:
+            m = chess.Move.from_uci(u)
+            sans.append(b.san(m))
+            b.push(m)
+        analysed = bool(evo and evo.get("start_fen") == start_fen and evo.get("moves") == sans)
+        if not info.get("result"):
+            info["result"] = {"1-0": "1-0", "0-1": "0-1", "1/2-1/2": "1/2-1/2"}.get(b.result(), "*")
+        text = pgnexport.annotated_pgn(start_fen, moves, info, evo if analysed else None)
+        return {"pgn": text, "analysed": analysed}
 
     def view_position(self, fen: str, last: Optional[list] = None) -> dict:
         """Look at another position (a node of the graph) without touching the game."""

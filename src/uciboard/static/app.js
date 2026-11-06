@@ -67,7 +67,7 @@ $("arrow-side").value = arrowSide;
 const drawnSide = (white) => arrowSide === "both" || (arrowSide === "white") === white;
 let lastSummary = null;
 let arrowKey = "";
-const show = { loose: true, pins: true, heat: false };
+const show = { loose: true, pins: true, heat: false, structure: false };
 for (const k of Object.keys(show)) {
   try {
     const v = localStorage.getItem("show-" + k);
@@ -120,14 +120,31 @@ function renderMoves(st) {
       box.append(n);
     }
     const m = document.createElement("span");
-    m.className = "mv" + (i === st.moves.length - 1 ? " cur" : "");
+    m.className = "mv" + (i === st.ply - 1 ? " cur" : "") + (i >= st.ply ? " later" : "");
     m.textContent = san;
+    m.dataset.ply = String(i + 1);
+    m.title = "Show the position after this move";
     box.append(m);
     if (!whiteToMove) num += 1;
     whiteToMove = !whiteToMove;
   });
-  box.scrollTop = box.scrollHeight;
+  const cur = box.querySelector(".cur");
+  if (cur) cur.scrollIntoView({ block: "nearest" });
+  else box.scrollTop = st.ply ? box.scrollHeight : 0;
+  const total = st.moves.length;
+  $("nav-start").disabled = $("nav-prev").disabled = st.ply === 0;
+  $("nav-next").disabled = $("nav-end").disabled = st.ply >= total;
+  $("nav-pos").textContent = total ? `move ${st.ply} of ${total}` : "";
 }
+
+$("moves").addEventListener("click", (e) => {
+  const m = e.target.closest(".mv");
+  if (m) act(api.goto_ply, Number(m.dataset.ply));
+});
+$("nav-start").addEventListener("click", () => act(api.goto_ply, 0));
+$("nav-prev").addEventListener("click", () => act(api.step, -1));
+$("nav-next").addEventListener("click", () => act(api.step, 1));
+$("nav-end").addEventListener("click", () => act(api.goto_ply, 1e6));
 
 function setMessage(text) {
   $("msg").textContent = text;
@@ -158,6 +175,7 @@ function setOrientation(o) {
   orientation = o;
   board.set({ orientation: o });
   drawHeat();
+  drawStructure();
 }
 
 // ------------------------------------------------------------- UCI output
@@ -265,8 +283,43 @@ function drawHeat() {
   }
 }
 
+// Files and pawn structure: gold stripes on open (strong) and half-open (light) files, a dashed box
+// round doubled pawns and a solid one round isolated pawns.
+let structKey = "";
+function drawStructure() {
+  const key = previewing || !show.structure || !current || !current.structure
+    ? "" : JSON.stringify([current.structure, orientation]);
+  if (key === structKey) return;
+  structKey = key;
+  let grid = $("board").querySelector(".struct");
+  if (!key) { if (grid) grid.hidden = true; return; }
+  if (!grid) {
+    grid = document.createElement("div");
+    grid.className = "struct";
+    for (let i = 0; i < 64; i++) grid.append(document.createElement("i"));
+    $("board").append(grid);
+  }
+  grid.hidden = false;
+  const st = current.structure;
+  const fileKind = {};
+  for (const f of st.files) fileKind[f.file] = f.kind;
+  const mark = {};
+  for (const p of st.pawns) for (const sq of p.squares) (mark[sq] = mark[sq] || new Set()).add(p.kind);
+  for (let i = 0; i < 64; i++) {
+    const col = i % 8, row = Math.floor(i / 8);
+    const file = orientation === "white" ? col : 7 - col;
+    const rank = orientation === "white" ? 7 - row : row;
+    const name = String.fromCharCode(97 + file) + (rank + 1);
+    const cls = [];
+    if (fileKind[String.fromCharCode(97 + file)]) cls.push("f-" + fileKind[String.fromCharCode(97 + file)]);
+    if (mark[name]) for (const k of mark[name]) cls.push("p-" + k);
+    grid.children[i].className = cls.join(" ");
+  }
+}
+
 function drawShapes() {
   drawHeat();
+  drawStructure();
   if (previewing) return;              // an Evolution arrow is being shown: nothing else on the board
   const s = lastSummary;
   let shapes = tacticShapes();
@@ -298,6 +351,7 @@ function renderTactics(st) {
   };
   if (show.loose) for (const f of t.loose) add(f.now ? "t-loose now" : "t-loose", f.text);
   if (show.pins) for (const p of t.pins) add(p.kind === "skewer" ? "t-skewer" : "t-pin", p.text);
+  if (show.structure && st.structure) for (const f of st.structure.found) add("t-struct", f.text);
 }
 
 for (const k of Object.keys(show)) {
@@ -468,7 +522,10 @@ window.addEventListener("keydown", (e) => {
   }
   if (e.target.tagName === "INPUT" && e.target.type !== "checkbox") return;
   if (e.ctrlKey || e.metaKey || e.altKey) return;
-  if (e.key === "ArrowLeft") { e.preventDefault(); $("btn-undo").click(); }
+  if (e.key === "ArrowLeft") { e.preventDefault(); $("nav-prev").click(); }
+  else if (e.key === "ArrowRight") { e.preventDefault(); $("nav-next").click(); }
+  else if (e.key === "Home") { e.preventDefault(); $("nav-start").click(); }
+  else if (e.key === "End") { e.preventDefault(); $("nav-end").click(); }
   else if (e.key === "f" || e.key === "F") $("btn-flip").click();
   else if (e.key === " " && e.target.tagName !== "BUTTON") { e.preventDefault(); $("btn-pause").click(); }
 });

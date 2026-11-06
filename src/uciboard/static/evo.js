@@ -658,6 +658,7 @@ export function initEvolution(ctx) {
     running = on;
     $("evo-run").disabled = on;
     $("evo-pgn").disabled = on;
+    $("evo-export").disabled = on;
     $("evo-depth").disabled = on;
     $("evo-seconds").disabled = on;
     $("evo-cancel").hidden = !on;
@@ -723,6 +724,29 @@ export function initEvolution(ctx) {
     ctx.render(st);
     if (st.message) ctx.message(st.message);
     setInfo("Game loaded: press Analyse game.");
+  });
+
+  // -------------------------------------------------------------- exporting the game
+
+  const xdlg = $("export-dialog");
+  $("evo-export").addEventListener("click", async () => {
+    const r = await api().export_pgn();
+    if (r.rejected) { setInfo(r.message || "Nothing to export."); return; }
+    $("export-text").value = r.pgn;
+    $("export-msg").textContent = r.analysed
+      ? "With the engine's scores, tactic names and arrows from the analysis."
+      : "Moves and tactic names only: analyse the game first to include the engine's scores and arrows.";
+    xdlg.showModal();
+    $("export-text").select();
+  });
+  $("export-close").addEventListener("click", () => xdlg.close());
+  $("export-copy").addEventListener("click", async () => {
+    const box = $("export-text");
+    box.select();
+    let ok = false;
+    try { await navigator.clipboard.writeText(box.value); ok = true; } catch (e) { /* fall back */ }
+    if (!ok) { try { ok = document.execCommand("copy"); } catch (e) { ok = false; } }
+    $("export-msg").textContent = ok ? "Copied." : "Select the text and copy it (Ctrl+C).";
   });
 
   // -------------------------------------------------------------- the legend

@@ -81,3 +81,22 @@ def test_the_control_heat_map_follows_the_toggle_and_the_board_turning(make_page
     page.uncheck("#show-heat")
     page.wait_for_function("document.querySelector('#board .heat').hidden")
     assert not errors, errors
+
+
+def test_the_pawn_structure_overlay_marks_files_and_pawns(make_page, stockfish):
+    page, errors = page_with(make_page, stockfish, "4k3/p1p5/8/8/8/2P5/2P1P3/4K3 w - - 0 1")
+    assert not page.is_checked("#show-structure")
+    assert page.locator("#board .struct:visible").count() == 0 and page.locator(".t-struct").count() == 0
+    page.check("#show-structure")
+    page.wait_for_selector("#board .struct i.f-open")
+    cells = "[...document.querySelectorAll('#board .struct i')].map(i => i.className)"
+    shown = page.evaluate(cells)
+    assert "f-open" in shown[1] and "f-half" in shown[0]                    # b-file open, a-file half-open
+    assert "p-isolated" in shown[8] and "p-doubled" in shown[42] and "p-doubled" in shown[50]   # a7; c3, c2
+    assert "open files: b, d, f, g, h" in page.inner_text("#tactics")
+    page.click("#btn-flip")
+    page.wait_for_function("document.querySelectorAll('#board .struct i')[62].className.includes('f-open')")  # b, flipped
+    page.uncheck("#show-structure")
+    page.wait_for_function("document.querySelector('#board .struct').hidden")
+    assert page.locator(".t-struct").count() == 0
+    assert not errors, errors

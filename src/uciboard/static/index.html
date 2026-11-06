@@ -15,7 +15,7 @@
     <span class="dot"></span><span id="engine-text">starting…</span>
   </span>
   <span class="spacer"></span>
-  <button id="btn-undo" title="Take back the last move (Left arrow)">Undo</button>
+  <button id="btn-undo" title="Take back the move on the board; if you stepped back, the moves after it go too">Undo</button>
   <button id="btn-reset" title="Back to the starting position">New</button>
   <button id="btn-flip" title="Turn the board round (F)">Flip</button>
   <button id="btn-pause" title="Stop or restart the analysis (Space)" aria-pressed="false">Pause</button>
@@ -28,6 +28,13 @@
       <button id="btn-back" title="Back to the game (Esc)">Back to the game</button>
     </div>
     <div id="board" class="cg-wrap"></div>
+    <div class="nav" id="nav" role="group" aria-label="Move through the game">
+      <button id="nav-start" title="Start of the game (Home)" aria-label="Start of the game">&#x23EE;</button>
+      <button id="nav-prev" title="One move back (Left arrow)" aria-label="One move back">&#x25C0;</button>
+      <button id="nav-next" title="One move forward (Right arrow)" aria-label="One move forward">&#x25B6;</button>
+      <button id="nav-end" title="End of the game (End)" aria-label="End of the game">&#x23ED;</button>
+      <span class="muted" id="nav-pos"></span>
+    </div>
     <div class="moves" id="moves" aria-label="Moves"></div>
     <div class="status" id="status" aria-live="off">
       <div class="numbers">
@@ -51,6 +58,7 @@
         <span class="muted">Show on the board</span>
         <label class="check" title="Pieces the other side can win by an exchange (counted properly, not just attackers against defenders). Red: it is their move now."><input type="checkbox" id="show-loose" checked> Loose pieces</label>
         <label class="check" title="Pieces that cannot move without losing something behind them, and valuable pieces with something behind them"><input type="checkbox" id="show-pins" checked> Pins and skewers</label>
+        <label class="check" title="Open and half-open files (gold stripes), doubled pawns (dashed box) and isolated pawns (solid box)"><input type="checkbox" id="show-structure"> Pawn structure</label>
         <label class="check" title="Who attacks each square and how often: teal where White has more attackers, rose where Black has. Counts attackers, so a pawn's diagonal counts even on an empty square."><input type="checkbox" id="show-heat"> Square control</label>
       </div>
       <ul class="tactics" id="tactics" aria-label="Tactical features of this position"></ul>
@@ -80,6 +88,7 @@
         <label>Depth <input id="evo-depth" type="number" min="1" max="60" step="1" title="Search depth per position. The paper uses 20; deeper is slower."></label>
         <label>Seconds <input id="evo-seconds" type="number" min="1" max="600" step="1" title="Most time spent on one position, whatever the depth"></label>
         <button id="evo-pgn" title="Paste a game to analyse">Load PGN…</button>
+        <button id="evo-export" title="The game as PGN, with the engine's scores, tactic names and arrows in the comments (analyse the game first to include the scores)">Export PGN…</button>
         <button id="evo-cancel" hidden>Cancel</button>
         <span class="spacer"></span>
         <button id="evo-zoom-out" class="quiet" title="Zoom out" aria-label="Zoom out">&#x2212;</button>
@@ -115,6 +124,18 @@
     </div>
   </section>
 </main>
+
+<dialog id="export-dialog">
+  <form method="dialog" class="pgn-form">
+    <label for="export-text">The game (PGN)</label>
+    <textarea id="export-text" rows="12" spellcheck="false" readonly></textarea>
+    <div class="pgn-msg" id="export-msg" role="status"></div>
+    <div class="pgn-buttons">
+      <button type="button" id="export-close">Close</button>
+      <button type="button" id="export-copy" class="primary">Copy</button>
+    </div>
+  </form>
+</dialog>
 
 <dialog id="pgn-dialog">
   <form method="dialog" class="pgn-form">

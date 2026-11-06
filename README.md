@@ -18,11 +18,20 @@ it keeps going until you move again, pause it, or the game ends.
   second picker draws both sides, White only or Black only (the count is of the line's moves, so
   "White only" with 8 shows White's first four; the numbers keep their place in the line).
   Arrows only ever show a line for the position on the board.
-- **Controls**: Undo (Left arrow), New, Flip (F), Pause / Resume (Space), and a FEN box:
+- **Controls**: Undo, New, Flip (F), Pause / Resume (Space), and a FEN box:
   paste a position and press Enter.
+- **Moving through the game**: the arrows under the board (or Left / Right, Home / End) step back
+  and forward, and clicking a move in the list jumps to it. The later moves stay in the list,
+  greyed, and the engine analyses the position you are on. Playing the game's own next move steps
+  on; playing a different move from an earlier position replaces the rest of the game. *Undo*
+  takes back the move on the board, and the moves after it if you had stepped back.
 
 - **Tactics**: pieces that can be won, pins and skewers drawn on the board, and labels (fork,
   discovered or double check, sacrifice) on the moves of the engine's line. See below.
+- **Pawn structure** (off by default): open and half-open files (gold stripes), doubled pawns
+  (dashed box) and isolated pawns (solid box), listed under the line. Plain facts about the
+  position: a doubled or isolated pawn can be fine, and an open file may be just what the position
+  wants.
 - **Positional graph measures**: the position as a graph of its 64 squares and their moves, after
   [ChessY](https://doi.org/10.1016/j.softx.2018.12.004) (Rudolph-Lilith, SoftwareX 2019): a
   square-control heat map on the board, and control, mobility, offensiveness, defensiveness and
@@ -112,6 +121,16 @@ evo_seconds = 20       # most time on one position
 evo_check_depth = 10   # depth of the quick searches that judge a check
 cache_dir = ""         # where finished analyses are kept (default: beside the config file)
 ```
+
+### Exporting the game
+
+*Export PGN…* in the Evolution tab shows the game as a PGN you can copy into Lichess or chess.com.
+Each move carries what those sites read from the comments: `[%eval]` (the engine's score after the
+move, White's side), a green arrow when the analysis found a move at least half a pawn better
+(only moves compared one move deep, at the depth the analysis ran, so it is the engine's opinion
+at that depth, not a verdict), and the tactic names of the move that was played (fork with its
+targets circled, discovered or double check, sacrifice). Without an analysis for this game you get
+the moves and the tactic names only.
 
 ### Positional graph measures (ChessY)
 
@@ -212,6 +231,8 @@ skipped when there is none. The browser tests also need `playwright install chro
 | `uci.py` | Drives the engine process; infinite search that can jump to a new position, and drops the old search's output when it does |
 | `api.py` | What the page calls: board, moves, polling of the output, summary and the best line's arrows; PGN loading, viewing a position, the Evolution job |
 | `tactics.py` | Exchange evaluation, loose pieces, pins and skewers, and the labels and net material of an engine line (python-chess only) |
+| `structure.py` | Open and half-open files, doubled and isolated pawns |
+| `pgnexport.py` | The game as a PGN with the analysis in the comments |
 | `posgraph.py` | The positional chess graph of a position (ChessY): edges, the measures, and the heat map's control counts |
 | `evolution.py` | The paper's pipeline: sequences, decision tree, merging, shortening, events, edge thickness, score chart |
 | `layout.py` | Equation (1): columns, virtual nodes, ordering and vertical positions |
