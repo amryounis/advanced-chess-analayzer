@@ -23,6 +23,8 @@ from . import __version__, config, evolution, pgnexport, posgraph, quality, stru
 from .layout import layout as run_layout
 from .uci import EngineError, UciEngine, parse_info
 
+MAX_ROWS = 300               # depth lines kept for the table of the current search
+ROW_PV = 14                  # moves of the line shown in a table row
 MAX_LINES = 20000            # kept in memory; the oldest half is dropped beyond this
 POLL_BATCH = 2000            # most lines handed to the page in one poll
 PV_MOVES = 10                # moves of the engine's best line kept (the page draws as many as you pick)
@@ -42,6 +44,42 @@ def score_text(score: Optional[dict], white_to_move: bool) -> str:
     return f"{cp / 100:+.2f}"
 
 
+def long_algebraic(board: chess.Board, move: chess.Move) -> str:
+    """The move as Arena and many engine windows write it: Nb1-c3, e7-e5, Bf5xb1, O-O, e7-e8=Q+."""
+    if board.is_castling(move):
+        text = "O-O" if chess.square_file(move.to_square) > chess.square_file(move.from_square) else "O-O-O"
+    else:
+        piece = board.piece_at(move.from_square)
+        letter = "" if piece is None or piece.piece_type == chess.PAWN else piece.symbol().upper()
+        sep = "x" if board.is_capture(move) else "-"
+        text = f"{letter}{chess.square_name(move.from_square)}{sep}{chess.square_name(move.to_square)}"
+        if move.promotion:
+            text += "=" + chess.piece_symbol(move.promotion).upper()
+    board.push(move)
+    text += "#" if board.is_checkmate() else "+" if board.is_check() else ""
+    board.pop()
+    return text
+
+
+def long_line(fen: str, uci_moves: list, limit: int) -> str:
+    """The first `limit` moves of a line in long algebraic notation (it stops at a move that is not legal)."""
+    try:
+        board = chess.Board(fen)
+    except ValueError:
+        return ""
+    out = []
+    for uci in uci_moves[:limit]:
+        try:
+            move = chess.Move.from_uci(uci)
+        except ValueError:
+            break
+        if move not in board.legal_moves:
+            break
+        out.append(long_algebraic(board, move))
+        board.push(move)
+    return " ".join(out)
+
+
 class Api:
     def __init__(self, settings: Optional[config.Settings] = None):
         self._settings = settings or config.Settings()
@@ -55,6 +93,11 @@ class Api:
         self._lines: list = []
         self._offset = 0                     # sequence number of _lines[0]
         self._summary: dict = {}
+        self._rows: list = []                        # depth lines of the current search, oldest first
+        self._row_seq = 0
+        self._row_epoch = 0                          # changes when the search is for another position
+        self._row_tag: Optional[str] = None
+        self._stats: dict = {}                       # nodes, speed, hash use, move being searched
         self._view: Optional[chess.Board] = None     # a position being looked at, not part of the game
         self._view_last: Optional[list] = None
         self._ply: Optional[int] = None              # how many moves of the game are on the board; None = all
@@ -138,6 +181,7 @@ class Api:
             engine.stop()                  # no search: nothing to show for this position
             with self._buf_lock:
                 self._summary = {}
+                self._new_search(None)
             return
         fen = shown.fen()
         try:
@@ -148,8 +192,16 @@ class Api:
         # for the old position, and that must not outlive this call.
         with self._buf_lock:
             self._summary = {}
+            self._new_search(None)
 
     # ------------------------------------------------------------- output
+
+    def _new_search(self, tag: Optional[str]) -> None:
+        """The table and counters start again (called with _buf_lock held)."""
+        self._rows.clear()
+        self._row_epoch += 1
+        self._row_tag = tag
+        self._stats = {}
 
     def _note(self, text: str) -> None:
         with self._buf_lock:
@@ -170,7 +222,25 @@ class Api:
             if kind != "out" or not tag:
                 return
             info = parse_info(text)
-            if not info or "score" not in info or info.get("multipv", 1) != 1:
+            if not info:
+                return
+            if tag != self._row_tag:                 # the first line of a search for another position
+                self._new_search(tag)
+                try:
+                    self._stats["total_moves"] = chess.Board(tag).legal_moves.count()
+                except ValueError:
+                    pass
+            for key in ("nodes", "nps", "hashfull"):
+                if key in info:
+                    self._stats[key] = info[key]
+            if "currmove" in info and "currmovenumber" in info:
+                try:
+                    b = chess.Board(tag)
+                    self._stats["currmove"] = long_algebraic(b, chess.Move.from_uci(info["currmove"]))
+                    self._stats["currnum"] = info["currmovenumber"]
+                except ValueError:
+                    pass
+            if "score" not in info or info.get("multipv", 1) != 1:
                 return
             try:
                 board = chess.Board(tag)
@@ -191,6 +261,15 @@ class Api:
                     board.push(move)
             except ValueError:
                 pass                       # an unreadable move ends the line shown
+            if info.get("depth"):
+                self._row_seq += 1
+                self._rows.append({
+                    "n": self._row_seq, "depth": info["depth"], "seldepth": info.get("seldepth", 0),
+                    "time": info.get("time", 0), "nodes": info.get("nodes", 0), "nps": info.get("nps", 0),
+                    "score": score_text(info["score"], white), "bound": info.get("bound", ""),
+                    "pv": long_line(tag, info.get("pv", []), ROW_PV)})
+                if len(self._rows) > MAX_ROWS:
+                    del self._rows[:MAX_ROWS // 3]
             self._summary = {
                 "depth": info.get("depth", 0), "seldepth": info.get("seldepth", 0),
                 "score": score_text(info["score"], white),
@@ -200,17 +279,24 @@ class Api:
                 "move_number": chess.Board(tag).fullmove_number, "white": white,
             }
 
-    def poll(self, cursor: int = 0) -> dict:
-        """New output lines since `cursor`, plus the engine's state and summary."""
+    def poll(self, cursor: int = 0, row_cursor: int = 0, row_epoch: int = -1) -> dict:
+        """New output lines since `cursor`, plus the engine's state and summary, the depth lines
+        since `row_cursor` (all of them, with `reset`, when the search is for another position than
+        `row_epoch`) and the counters of the search."""
         engine = self._engine
         with self._buf_lock:
             start = max(0, cursor - self._offset)
             chunk = self._lines[start:start + POLL_BATCH]
             new_cursor = self._offset + start + len(chunk)
             summary = dict(self._summary)
+            reset = row_epoch != self._row_epoch
+            rows = list(self._rows) if reset else [r for r in self._rows if r["n"] > row_cursor]
+            uci = {"rows": rows, "reset": reset, "epoch": self._row_epoch, "cursor": self._row_seq,
+                   "stats": {**self._stats, "threads": self._settings.threads,
+                             "hash_mb": self._settings.hash_mb}}
         if summary.get("pv_uci"):
             summary["themes"] = self._themes(summary["fen"], summary["pv_uci"])
-        return {"lines": chunk, "cursor": new_cursor, "summary": summary,
+        return {"lines": chunk, "cursor": new_cursor, "summary": summary, "uci": uci,
                 "engine": self._engine_state(engine)}
 
     def _themes(self, fen: str, pv: list):
@@ -530,6 +616,7 @@ class Api:
                 self._engine.stop()                       # the job needs the machine
             with self._buf_lock:
                 self._summary = {}
+                self._new_search(None)
             self._set_evo(state="running", done=0, total=0, message="starting the engine", error="")
             self._evo_result = None
             self._evo_thread = threading.Thread(

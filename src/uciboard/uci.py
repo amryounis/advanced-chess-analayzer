@@ -232,7 +232,15 @@ def parse_info(line: str) -> Optional[dict]:
             break
         elif key == "wdl":
             i += 4                                  # wdl <win> <draw> <loss>
-        elif key in ("currmove", "currmovenumber"):
+        elif key == "currmove":
+            if i + 1 < n:
+                out["currmove"] = parts[i + 1]
+            i += 2
+        elif key == "currmovenumber":
+            try:
+                out["currmovenumber"] = int(parts[i + 1])
+            except (IndexError, ValueError):
+                pass
             i += 2
         elif key in ("refutation", "currline"):
             break                                   # move lists we do not use

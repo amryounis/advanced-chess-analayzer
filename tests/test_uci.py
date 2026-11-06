@@ -23,7 +23,7 @@ def test_parse_info_handles_mate_bounds_and_wdl():
 def test_parse_info_ignores_other_lines():
     assert parse_info("bestmove e2e4 ponder e7e5") is None
     assert parse_info("info string NNUE evaluation using nn.nnue") is None
-    assert parse_info("info depth 3 currmove e2e4 currmovenumber 1") == {"depth": 3}
+    assert parse_info("info depth 3 currmove e2e4 currmovenumber 1") == {"depth": 3, "currmove": "e2e4", "currmovenumber": 1}
 
 
 def test_a_missing_engine_is_a_clear_error(tmp_path):

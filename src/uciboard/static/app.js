@@ -459,18 +459,92 @@ const STATE_TEXT = { analysing: "analysing", paused: "paused", idle: "game over"
 
 function renderEngine(e) {
   $("engine").dataset.state = e.state;
+  $("uci").dataset.state = e.state;
+  const mb = $("u-name").dataset.mb;
+  $("u-name").textContent = e.name ? (mb ? `${e.name} · ${mb}` : e.name) : "–";
   $("engine-text").textContent = e.name ? `${e.name} · ${STATE_TEXT[e.state]}` : STATE_TEXT[e.state];
   if (e.error && (e.state === "none" || e.state === "exited")) setMessage(e.error);
 }
+
+// ------------------------------------------------ the UCI table (after Arena's engine window)
+
+const uciTable = $("uci-table");
+let rowCursor = 0, rowEpoch = -1;
+const MAX_ROWS_DOM = 200;
+const nfmt = new Intl.NumberFormat("en-US");
+const kfmt = (n) => (n < 1000 ? String(n) : `${nfmt.format(Math.round(n / 1000))}k`);
+const clock = (ms) => {
+  const t = Math.floor(ms / 1000);
+  return `${String(Math.floor(t / 60)).padStart(2, "0")}:${String(t % 60).padStart(2, "0")}`;
+};
+
+function rowElement(r) {
+  const d = document.createElement("div");
+  d.className = "ur";
+  const cell = (cls, text) => {
+    const c = document.createElement("span");
+    c.className = cls;
+    c.textContent = text;
+    d.append(c);
+    return c;
+  };
+  cell("d", `${r.depth}/${r.seldepth}`);
+  cell("t", clock(r.time));
+  cell("n", kfmt(r.nodes));
+  cell("s", kfmt(r.nps));
+  const bound = r.bound === "lower" ? "≥" : r.bound === "upper" ? "≤" : "";
+  cell("v" + (r.score.includes("#") ? " mate" : ""), bound + r.score);
+  const pv = cell("ln", r.pv);
+  pv.title = r.pv;
+  return d;
+}
+
+function applyUci(u) {
+  if (!u) return;
+  if (u.reset) { uciTable.textContent = ""; rowCursor = 0; }
+  rowEpoch = u.epoch;
+  if (u.rows.length) {
+    const frag = document.createDocumentFragment();
+    for (const r of u.rows) frag.prepend(rowElement(r));       // newest on top
+    uciTable.prepend(frag);
+    while (uciTable.childElementCount > MAX_ROWS_DOM) uciTable.lastElementChild.remove();
+    rowCursor = u.rows[u.rows.length - 1].n;
+  }
+  const st = u.stats || {};
+  $("u-threads").textContent = st.threads ? String(st.threads) : "";
+  $("u-move").textContent = st.currmove ? `${st.currmove} (${st.currnum}/${st.total_moves || "?"})` : "";
+  $("u-nodes").textContent = st.nodes ? nfmt.format(st.nodes) : "";
+  $("u-nps").textContent = st.nps ? kfmt(st.nps) : "";
+  $("u-hash").textContent = st.hashfull !== undefined ? `${Math.round(st.hashfull / 10)}%` : "";
+  const mb = st.hash_mb ? `${st.hash_mb} MB` : "";
+  $("u-name").dataset.mb = mb;
+}
+
+let rawMode = false;
+try { rawMode = localStorage.getItem("uci-raw") === "1"; } catch (e) { /* storage off */ }
+function showRaw(on) {
+  rawMode = on;
+  $("uci-raw").checked = on;
+  uciTable.hidden = on;
+  $("pane").hidden = !on;
+  $("raw-tools").hidden = !on;
+  if (on && $("follow").checked) pane.scrollTop = pane.scrollHeight;
+}
+$("uci-raw").addEventListener("change", () => {
+  showRaw($("uci-raw").checked);
+  try { localStorage.setItem("uci-raw", rawMode ? "1" : "0"); } catch (e) { /* storage off */ }
+});
+showRaw(rawMode);
 
 let polling = false;
 async function poll() {
   if (polling) return;
   polling = true;
   try {
-    const r = await api.poll(cursor);
+    const r = await api.poll(cursor, rowCursor, rowEpoch);
     cursor = r.cursor;
     appendLines(r.lines);
+    applyUci(r.uci);
     renderSummary(r.summary);
     renderEngine(r.engine);
   } catch (e) {

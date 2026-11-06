@@ -79,9 +79,8 @@ cg-board square.check {
   border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
 .check { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
 .uci { flex: none; border-top: 1px solid var(--line); }
-.uci-head { display: flex; align-items: center; gap: 8px; padding: 3px 10px; color: var(--muted); font-size: 12px; }
 /* five lines, newest at the bottom; each log line is one row (the full line is in its tooltip) */
-.pane { height: calc(5 * 1.5em + 5px); overflow-y: auto; background: var(--pane-bg); padding: 0 10px 5px;
+.pane, .uci-table { height: calc(5 * 1.5em + 5px); overflow-y: auto; background: var(--pane-bg); padding: 0 10px 5px;
   font: 12px/1.5 var(--mono); }
 .pane .l { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pane .in { color: var(--pane-sent); }
@@ -271,7 +270,7 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
   .evo-chart { height: 84px; }
   .evo-metrics { height: 70px; }
   .evo-graph { flex-basis: 150px; }
-  .pane { height: calc(4 * 1.5em + 5px); }
+  .pane, .uci-table { height: calc(4 * 1.5em + 5px); }
 }
 
 /* inaccuracy ?!  mistake ?  blunder ?? after a move */
@@ -280,3 +279,28 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
 .moves .mv.q2 .q { color: #e0701a; }
 .moves .mv.q3 .q { color: #cc2f2f; }
 .evo-title .quality { white-space: nowrap; }
+
+/* the UCI strip, after Arena's engine window: a status row, then one row per depth, newest first */
+.uci-stats { display: flex; align-items: stretch; gap: 0; font-size: 12px; background: var(--bg);
+  border-bottom: 1px solid var(--line); color: var(--ink); }
+.uci-stats .cell { padding: 3px 10px; border-right: 1px solid var(--line); display: inline-flex; align-items: center;
+  gap: 6px; white-space: nowrap; min-width: 2.5em; }
+.uci-stats .cell.wide { min-width: 11em; }
+.uci-stats .cell.num { min-width: 7em; justify-content: flex-end; font-family: var(--mono); }
+.uci-stats .cell:empty { min-width: 2.5em; }
+.uci-stats .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
+.uci[data-state="analysing"] .uci-stats .dot { background: var(--accent); }
+.uci[data-state="idle"] .uci-stats .dot, .uci[data-state="paused"] .uci-stats .dot { background: #d6a014; }
+.uci[data-state="none"] .uci-stats .dot, .uci[data-state="exited"] .uci-stats .dot { background: var(--warn); }
+.uci-stats > .check, .uci-stats #raw-tools { padding: 0 10px; display: inline-flex; align-items: center; gap: 8px; color: var(--muted); }
+.uci-table { overflow-y: auto; background: var(--pane-bg); font: 12px/1.5 var(--mono); padding: 0 0 5px; }
+.uci-table[hidden], .pane[hidden] { display: none; }
+.uci-table .ur { display: grid; grid-template-columns: 6.2em 4.4em 7.4em 6.4em 5.2em 1fr; padding: 0 10px; white-space: nowrap; }
+.uci-table .ur:hover { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.uci-table .ur > span { overflow: hidden; text-overflow: ellipsis; }
+.uci-table .n, .uci-table .s, .uci-table .v { text-align: right; padding-right: 1em; }
+.uci-table .d, .uci-table .t { color: var(--muted); }
+.uci-table .v { font-weight: 650; }
+.uci-table .v.mate { color: var(--warn); }
+.uci-table .ur:first-child .ln { color: var(--pane-best); }
+.uci-stats #raw-tools[hidden] { display: none; }

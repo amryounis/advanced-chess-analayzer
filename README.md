@@ -8,10 +8,16 @@ it keeps going until you move again, pause it, or the game ends.
 
 - **Board**: [chessground](https://github.com/lichess-org/chessground) (the Lichess board,
   vendored, works offline), legal moves only, promotion chooser, castling, en passant.
-- **UCI output**: every line Stockfish prints, plus the commands sent to it
-  (`position fen …`, `go infinite`, `stop`), in a strip of five lines (four in a short window) at
-  the bottom of the right column. One log line is one row; hover it for the whole line, scroll
-  for older ones. *Follow* keeps the newest line in view; scrolling up stops following.
+- **UCI output**, laid out like the engine window of Arena: a status row (engine and its hash
+  memory, protocol, search threads, the root move being searched with its number among the legal
+  moves, nodes so far, speed, hash use) and under it one row per depth, newest on top: depth/selective
+  depth, time, nodes, speed (both in thousands, `k`), score (from White's side; `#3` is mate in 3;
+  `≥`/`≤` for a bound) and the line in long notation (`Nb1-c3`, `e7-e5`, `Bf5xb1`, `O-O`, `+` and `#`
+  for check and mate). The strip shows five rows (four in a short window); scroll for older ones, hover
+  a row for its whole line. The table starts again when the position changes. The root move is
+  reported by the engine only after a few seconds, so that cell is empty at first. Tick *Raw* for the
+  plain log instead: every line Stockfish prints plus the commands sent to it (`position fen …`,
+  `go infinite`, `stop`), with *Follow* (scrolling up stops following) and *Clear*.
 - **Summary**: evaluation (always from White's side), depth, speed and the best line in SAN.
 - **Best line as arrows**: the engine's best line is drawn on the board, numbered in play order,
   White's moves in blue and Black's in orange, fading for later moves. The *Arrows* picker
@@ -245,7 +251,7 @@ skipped when there is none. The browser tests also need `playwright install chro
 | File | What it does |
 | --- | --- |
 | `uci.py` | Drives the engine process; infinite search that can jump to a new position, and drops the old search's output when it does |
-| `api.py` | What the page calls: board, moves, polling of the output, summary and the best line's arrows; PGN loading, viewing a position, the Evolution job |
+| `api.py` | What the page calls: board, moves, polling of the output (log, depth table, counters), summary and the best line's arrows; PGN loading, viewing a position, the Evolution job |
 | `tactics.py` | Exchange evaluation, loose pieces, pins and skewers, and the labels and net material of an engine line (python-chess only) |
 | `structure.py` | Open and half-open files, doubled and isolated pawns |
 | `quality.py` | Inaccuracy, mistake and blunder marks from the analysis |

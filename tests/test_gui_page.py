@@ -42,6 +42,7 @@ def test_engine_starts_and_streams_uci_output(make_page, stockfish):
     page, errors = make_page(engine_api(stockfish))
     page.wait_for_selector("#engine[data-state=analysing]")
     assert "Stockfish" in page.inner_text("#engine-text")
+    page.check("#uci-raw")                                        # the raw log, not the table
     page.wait_for_function("document.querySelectorAll('#pane .l').length > 8")
     text = page.inner_text("#pane")
     assert "> uci" in text and "uciok" in text and "> go infinite" in text
@@ -142,6 +143,7 @@ def test_checkmate_ends_the_analysis(make_page, stockfish):
 @pytest.mark.engine
 def test_scrolling_up_stops_following_and_ticking_follow_returns_to_the_end(make_page, stockfish):
     page, _ = make_page(engine_api(stockfish))
+    page.check("#uci-raw")
     page.wait_for_function("document.querySelectorAll('#pane .l').length > 40")
     assert page.is_checked("#follow")
     page.evaluate("document.getElementById('pane').scrollTop = 0")
@@ -254,3 +256,40 @@ def test_arrows_for_one_side_only(make_page, stockfish):
     page.wait_for_selector("#engine[data-state=analysing]")
     assert page.input_value("#arrow-side") == "black"
     assert errors == []
+
+
+@pytest.mark.engine
+def test_the_uci_table_has_one_row_per_depth_newest_first(make_page, stockfish):
+    page, errors = make_page(engine_api(stockfish))
+    page.wait_for_selector("#engine[data-state=analysing]")
+    page.wait_for_function("document.querySelectorAll('#uci-table .ur').length >= 6")
+    assert page.is_hidden("#pane") and page.is_visible("#uci-table")
+    first = page.evaluate("""() => [...document.querySelectorAll('#uci-table .ur')].map(r =>
+        Number(r.querySelector('.d').textContent.split('/')[0]))""")
+    assert first == sorted(first, reverse=True) and first[0] >= 6               # deepest on top
+    row = page.locator("#uci-table .ur").first
+    assert "-" in row.locator(".ln").inner_text()                               # long notation: e2-e4
+    assert row.locator(".v").inner_text()[0] in "+-#≥≤"
+    assert ":" in row.locator(".t").inner_text()
+    page.wait_for_function("document.getElementById('u-nodes').textContent.length > 0")
+    assert "Stockfish" in page.inner_text("#u-name") and "MB" in page.inner_text("#u-name")
+    assert page.inner_text("#u-nps").strip() and page.inner_text("#u-threads").strip()
+    page.check("#uci-raw")                                                      # and the log is one click away
+    assert page.is_visible("#pane") and page.is_hidden("#uci-table") and page.is_visible("#follow")
+    page.uncheck("#uci-raw")
+    assert page.is_hidden("#follow")
+    assert not errors, errors
+
+
+@pytest.mark.engine
+def test_the_table_starts_again_for_another_position(make_page, stockfish):
+    page, errors = make_page(engine_api(stockfish))
+    page.wait_for_function("document.querySelectorAll('#uci-table .ur').length >= 8")
+    drag(page, "e2", "e4")
+    page.wait_for_function("document.querySelectorAll('#uci-table .ur').length > 0 && "
+                           "document.querySelector('#uci-table .ur .ln').textContent.split(' ')[0].match(/^[a-hNBRQK]/) "
+                           "&& document.getElementById('board').dataset.fen.includes('4P3')")
+    page.wait_for_function("""() => { const ds = [...document.querySelectorAll('#uci-table .ur .d')]
+        .map(d => Number(d.textContent.split('/')[0])); return ds.length > 0 && ds.length < 40 &&
+        ds.every((d, i) => i === 0 || d <= ds[i - 1]); }""")
+    assert not errors, errors

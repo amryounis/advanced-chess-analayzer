@@ -109,14 +109,24 @@
         <div class="legend-grid" id="legend-grid"></div>
       </details>
     </div>
-    <div class="uci" aria-label="UCI output">
-      <div class="uci-head">
-        <span>UCI output</span>
+    <div class="uci" id="uci" aria-label="UCI output" data-state="none">
+      <div class="uci-stats" id="uci-stats">
+        <span class="cell"><span class="dot"></span><span id="u-name" title="The engine and the memory its hash table may use">–</span></span>
+        <span class="cell" title="The protocol the engine speaks">UCI</span>
+        <span class="cell" id="u-threads" title="Search threads"></span>
+        <span class="cell wide" id="u-move" title="The move being searched at the root, and its number among the legal moves (the engine reports this only after a few seconds)"></span>
+        <span class="cell num" id="u-nodes" title="Positions searched so far"></span>
+        <span class="cell num" id="u-nps" title="Positions per second"></span>
+        <span class="cell num" id="u-hash" title="How full the hash table is"></span>
         <span class="spacer"></span>
-        <label class="check"><input type="checkbox" id="follow" checked> Follow</label>
-        <button class="quiet" id="btn-clear">Clear</button>
+        <span id="raw-tools" hidden>
+          <label class="check"><input type="checkbox" id="follow" checked> Follow</label>
+          <button class="quiet" id="btn-clear">Clear</button>
+        </span>
+        <label class="check" title="Show the engine's lines exactly as they come, with the commands sent to it, instead of the table"><input type="checkbox" id="uci-raw"> Raw</label>
       </div>
-      <div class="pane" id="pane" tabindex="0" title="The engine's raw output, newest at the bottom: scroll for the rest"></div>
+      <div class="uci-table" id="uci-table" aria-label="One line per depth, newest first"></div>
+      <div class="pane" id="pane" tabindex="0" hidden title="The engine's raw output, newest at the bottom: scroll for the rest"></div>
     </div>
   </section>
 </main>
