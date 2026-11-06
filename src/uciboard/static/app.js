@@ -121,7 +121,15 @@ function renderMoves(st) {
     }
     const m = document.createElement("span");
     m.className = "mv" + (i === st.ply - 1 ? " cur" : "") + (i >= st.ply ? " later" : "");
+    const mark = (st.marks && st.marks[i]) || "";
     m.textContent = san;
+    if (mark) {
+      const q = document.createElement("span");
+      q.className = "q";
+      q.textContent = mark;
+      m.append(q);
+      m.classList.add(mark === "?!" ? "q1" : mark === "?" ? "q2" : "q3");
+    }
     m.dataset.ply = String(i + 1);
     m.title = "Show the position after this move";
     box.append(m);
@@ -197,6 +205,7 @@ function appendLines(lines) {
     const d = document.createElement("div");
     d.className = lineClass(l);
     d.textContent = (l.k === "in" ? "> " : l.k === "sys" ? "# " : "") + l.t;
+    d.title = l.t;
     frag.append(d);
   }
   pane.append(frag);
@@ -489,22 +498,6 @@ $("btn-pause").addEventListener("click", async () => {
 
 $("btn-back").addEventListener("click", () => act(api.clear_view));
 
-// ------------------------------------------------------------------- tabs
-
-function showTab(name) {
-  for (const b of document.querySelectorAll(".tabs [role=tab]")) {
-    b.setAttribute("aria-selected", String(b.dataset.tab === name));
-  }
-  $("pane").hidden = name !== "uci";
-  $("evo").hidden = name !== "evo";
-  document.querySelector(".pane-head").dataset.tab = name;
-  if (name === "evo" && evo) evo.show();
-  else if (name === "uci" && $("follow").checked) pane.scrollTop = pane.scrollHeight;
-}
-for (const b of document.querySelectorAll(".tabs [role=tab]")) {
-  b.addEventListener("click", () => showTab(b.dataset.tab));
-}
-
 $("fen").addEventListener("keydown", async (e) => {
   if (e.key !== "Enter") return;
   const st = await api.set_position($("fen").value);
@@ -545,6 +538,7 @@ async function init() {
   });
   evo.onState(current);
   evo.init();
+  evo.show();
   poll();
   setInterval(poll, POLL_MS);
 }

@@ -19,7 +19,7 @@ from typing import Optional
 import chess
 import chess.pgn
 
-from . import __version__, config, evolution, pgnexport, posgraph, structure, tactics
+from . import __version__, config, evolution, pgnexport, posgraph, quality, structure, tactics
 from .layout import layout as run_layout
 from .uci import EngineError, UciEngine, parse_info
 
@@ -281,6 +281,7 @@ class Api:
             "check": shown.is_check(),
             "moves": sans,
             "ply": self._cursor(),
+            "marks": self._marks(sans),
             "first_move_number": root.fullmove_number,
             "first_is_black": root.turn == chess.BLACK,
             "over": self._result_text(shown),
@@ -289,6 +290,13 @@ class Api:
             "control": posgraph.control_map(shown),
             "structure": structure.analyse(shown),
         }
+
+    def _marks(self, sans: list) -> list:
+        """Inaccuracy / mistake / blunder marks for the game's moves, if the analysis is of this game."""
+        evo = self._evo_result
+        if not evo or evo.get("start_fen") != self._root_fen or evo.get("moves") != sans:
+            return []
+        return quality.marks_for(sans, evo["chart"])
 
     @staticmethod
     def _tactics(board: chess.Board) -> dict:
@@ -585,6 +593,8 @@ class Api:
             # before the measures existed get them too
             data["metrics"] = posgraph.game_metrics(data["start_fen"], data["moves"])
             data["metric_names"] = posgraph.METRICS
+            rows = quality.classify(data["chart"])
+            data["quality"] = {"rows": rows, "counts": quality.counts(rows)}
             self._evo_result = data
             self._set_evo(state="done", message="done")
         except evolution.Cancelled:

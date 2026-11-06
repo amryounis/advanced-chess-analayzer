@@ -36,6 +36,12 @@
       <span class="muted" id="nav-pos"></span>
     </div>
     <div class="moves" id="moves" aria-label="Moves"></div>
+    <input id="fen" class="fen" spellcheck="false" autocomplete="off"
+           title="The position (FEN). Paste another and press Enter to set it up.">
+    <div class="msg" id="msg" role="status"></div>
+  </section>
+
+  <section class="right" aria-label="Engine">
     <div class="status" id="status" aria-live="off">
       <div class="numbers">
         <span class="eval" id="eval">–</span>
@@ -63,26 +69,7 @@
       </div>
       <ul class="tactics" id="tactics" aria-label="Tactical features of this position"></ul>
     </div>
-    <input id="fen" class="fen" spellcheck="false" autocomplete="off"
-           title="The position (FEN). Paste another and press Enter to set it up.">
-    <div class="msg" id="msg" role="status"></div>
-  </section>
-
-  <section class="right" aria-label="Engine">
-    <div class="pane-head">
-      <div class="tabs" role="tablist">
-        <button role="tab" id="tab-uci" aria-selected="true" data-tab="uci">UCI output</button>
-        <button role="tab" id="tab-evo" aria-selected="false" data-tab="evo">Evolution</button>
-      </div>
-      <span class="spacer"></span>
-      <span class="uci-tools">
-        <label class="check"><input type="checkbox" id="follow" checked> Follow</label>
-        <button class="quiet" id="btn-clear">Clear</button>
-      </span>
-    </div>
-    <div class="pane" id="pane" tabindex="0"></div>
-
-    <div class="evo" id="evo" hidden>
+    <div class="evo" id="evo">
       <div class="evo-bar">
         <button id="evo-run" class="primary" title="Analyse the game on the board and draw its evolution graph">Analyse game</button>
         <label>Depth <input id="evo-depth" type="number" min="1" max="60" step="1" title="Search depth per position. The paper uses 20; deeper is slower."></label>
@@ -121,6 +108,15 @@
         <summary>How to read it</summary>
         <div class="legend-grid" id="legend-grid"></div>
       </details>
+    </div>
+    <div class="uci" aria-label="UCI output">
+      <div class="uci-head">
+        <span>UCI output</span>
+        <span class="spacer"></span>
+        <label class="check"><input type="checkbox" id="follow" checked> Follow</label>
+        <button class="quiet" id="btn-clear">Clear</button>
+      </div>
+      <div class="pane" id="pane" tabindex="0" title="The engine's raw output, newest at the bottom: scroll for the rest"></div>
     </div>
   </section>
 </main>

@@ -10,6 +10,8 @@ clearly better than the move played.
   * Tactic names (fork, discovered check, double check, sacrifice) come from the geometry of the move
     that was played, the same rules as the engine's line in the app (tactics.line_themes). A fork gets
     its targets circled.
+  * Moves that gave something away are marked ?! ? ?? (the standard symbols), by the drop in the
+    mover's winning chances; see quality.py for the thresholds and what they mean.
   * "Engine preferred" is only said when the analysis compared both moves one move deep and the
     difference is at least BETTER_BY pawns, at the depth the analysis ran; it is the engine's
     opinion at that depth, not a verdict.
@@ -25,7 +27,7 @@ import chess.engine
 import chess.pgn
 import chess.svg
 
-from . import tactics
+from . import quality, tactics
 
 BETTER_BY = 0.5                  # pawns, before the engine's preferred move is mentioned
 
@@ -73,8 +75,9 @@ def annotated_pgn(start_fen: str, uci_moves: list, info: dict, evo: Optional[dic
         game.setup(start)
     game.headers["Annotator"] = "uciboard"
 
-    by_id, mains = {}, {}
+    by_id, mains, marks = {}, {}, {}
     if evo:
+        marks = {r["ply"]: r["mark"] for r in quality.classify(evo.get("chart", []))}
         by_id = {n["id"]: n for n in evo["nodes"]}
         mains = {n["main"]: n for n in evo["nodes"] if n["main"] is not None}
 
@@ -88,6 +91,9 @@ def annotated_pgn(start_fen: str, uci_moves: list, info: dict, evo: Optional[dic
         node = node.add_variation(move)
 
         words, arrows, squares = [], [], []
+        nag = {"?!": chess.pgn.NAG_DUBIOUS_MOVE, "?": chess.pgn.NAG_MISTAKE, "??": chess.pgn.NAG_BLUNDER}.get(marks.get(ply, ""))
+        if nag:
+            node.nags.add(nag)
         main = mains.get(ply)
         if main is not None:
             score = _score(main)

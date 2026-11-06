@@ -8,9 +8,10 @@ it keeps going until you move again, pause it, or the game ends.
 
 - **Board**: [chessground](https://github.com/lichess-org/chessground) (the Lichess board,
   vendored, works offline), legal moves only, promotion chooser, castling, en passant.
-- **UCI output pane**: every line Stockfish prints, plus the commands sent to it
-  (`position fen …`, `go infinite`, `stop`). *Follow* keeps the newest line in view;
-  scrolling up stops following.
+- **UCI output**: every line Stockfish prints, plus the commands sent to it
+  (`position fen …`, `go infinite`, `stop`), in a strip of five lines (four in a short window) at
+  the bottom of the right column. One log line is one row; hover it for the whole line, scroll
+  for older ones. *Follow* keeps the newest line in view; scrolling up stops following.
 - **Summary**: evaluation (always from White's side), depth, speed and the best line in SAN.
 - **Best line as arrows**: the engine's best line is drawn on the board, numbered in play order,
   White's moves in blue and Black's in orange, fading for later moves. The *Arrows* picker
@@ -36,7 +37,7 @@ it keeps going until you move again, pause it, or the game ends.
   [ChessY](https://doi.org/10.1016/j.softx.2018.12.004) (Rudolph-Lilith, SoftwareX 2019): a
   square-control heat map on the board, and control, mobility, offensiveness, defensiveness and
   more for both sides along the game, under the Evolution score chart. See below.
-- **Evolution tab**: the graph of [Chess Evolution Visualization](https://doi.org/10.1109/TVCG.2014.2299803)
+- **Evolution**: the graph of [Chess Evolution Visualization](https://doi.org/10.1109/TVCG.2014.2299803)
   (Lu, Wang, Lin; IEEE TVCG 2014) for the game on the board. See below.
 
 Nothing leaves your machine. No LLM, no internet.
@@ -76,9 +77,9 @@ inside an exchange are not modelled; material is counted pawn 1, minor piece 3, 
 are descriptions of the position, not evaluations of it: a "loose" piece can still be the right
 thing to leave.
 
-## Evolution tab
+## Evolution
 
-Play a game (or press **Load PGN…** and paste one), open the **Evolution** tab and press
+Play a game (or press **Load PGN…** and paste one), press
 **Analyse game**. Stockfish searches every position of the game for its best continuations;
 the graph shows where the moves played could have led.
 
@@ -106,7 +107,7 @@ How to read it (the *How to read it* box under the graph has the same legend):
   from the graph; the engine analyses it; Esc or *Back to the game* returns). Everything not
   connected to the node fades. Drag to pan, wheel or +/− to zoom, *Fit* and *Start* to reset the view.
 
-Settings on the tab: **Depth** and **Seconds** (the most time spent on one position). The paper
+Settings in the toolbar: **Depth** and **Seconds** (the most time spent on one position). The paper
 uses depth 20, which can take many minutes for a long game; the default is 16. On a two-core test
 machine a 12-move game took about 40 seconds at the defaults. Finished analyses are kept (see
 `cache_dir`) and reused when the same game is analysed again with the same settings (a release that changes what a saved graph contains, like 0.5.0, analyses the game again once). The live
@@ -122,9 +123,24 @@ evo_check_depth = 10   # depth of the quick searches that judge a check
 cache_dir = ""         # where finished analyses are kept (default: beside the config file)
 ```
 
+### Move quality
+
+After an analysis, the moves that gave something away are marked in the move list, in the PGN
+export (as the standard `?!`, `?`, `??` symbols) and counted per side under the graph's title.
+A move is judged by how much it dropped the mover's chance of winning, using the winning-chances
+curve Lichess publishes: `win% = 50 + 50 · (2 / (1 + e^(−0.00368208 · cp)) − 1)`, scores clipped to
+±10 pawns. A drop of 10 points is an inaccuracy (`?!`), 20 a mistake (`?`), 30 a blunder (`??`).
+Using winning chances means two pawns given up while a rook ahead count for little, and the same
+loss in an equal position counts for a lot.
+
+What it is not: a verdict. The scores are from the depth the analysis ran at, and "best" is the best
+of the lines the analysis kept for that position, not of every legal move; a move scoring better
+than all of them loses nothing. Nothing is marked "good" or "best". It uses what the Evolution
+analysis already found, so there is no extra search.
+
 ### Exporting the game
 
-*Export PGN…* in the Evolution tab shows the game as a PGN you can copy into Lichess or chess.com.
+*Export PGN…* in the Evolution toolbar shows the game as a PGN you can copy into Lichess or chess.com.
 Each move carries what those sites read from the comments: `[%eval]` (the engine's score after the
 move, White's side), a green arrow when the analysis found a move at least half a pawn better
 (only moves compared one move deep, at the depth the analysis ran, so it is the engine's opinion
@@ -232,13 +248,14 @@ skipped when there is none. The browser tests also need `playwright install chro
 | `api.py` | What the page calls: board, moves, polling of the output, summary and the best line's arrows; PGN loading, viewing a position, the Evolution job |
 | `tactics.py` | Exchange evaluation, loose pieces, pins and skewers, and the labels and net material of an engine line (python-chess only) |
 | `structure.py` | Open and half-open files, doubled and isolated pawns |
+| `quality.py` | Inaccuracy, mistake and blunder marks from the analysis |
 | `pgnexport.py` | The game as a PGN with the analysis in the comments |
 | `posgraph.py` | The positional chess graph of a position (ChessY): edges, the measures, and the heat map's control counts |
 | `evolution.py` | The paper's pipeline: sequences, decision tree, merging, shortening, events, edge thickness, score chart |
 | `layout.py` | Equation (1): columns, virtual nodes, ordering and vertical positions |
 | `config.py` | Where Stockfish is and how it runs |
 | `app.py` | The window (pywebview) and a local static server |
-| `static/` | The page: board, UCI pane, controls; `evo.js` draws the graph and the score chart |
+| `static/` | The page: board, moves, the line and overlays, the Evolution graph, the UCI strip; `evo.js` draws the graph and the score chart |
 
 ## Licence
 

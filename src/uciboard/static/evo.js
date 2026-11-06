@@ -396,7 +396,7 @@ export function initEvolution(ctx) {
     if (opts.reveal !== false) reveal(n);
     drawChart();
     describe(n);
-    const st = isFinal(n) ? await api().clear_view() : await api().view_position(n.fen, lastOf(n.uci));
+    const st = isFinal(n) ? await api().goto_ply(1e6) : await api().view_position(n.fen, lastOf(n.uci));
     ctx.render(st);
   }
 
@@ -447,7 +447,7 @@ export function initEvolution(ctx) {
       const target = byId.get(e.t);
       if (last) selected = e.t;        // set before the board changes: the state handler checks it
       // the end of the game itself is not "a position from the graph": give the board back
-      const st = last && isFinal(target) ? await api().clear_view()
+      const st = last && isFinal(target) ? await api().goto_ply(1e6)
         : await api().view_position(frames[k].fen, frames[k].last);
       if (my !== stepToken) return;
       ctx.render(st);
@@ -548,7 +548,7 @@ export function initEvolution(ctx) {
     }
     if (!data.metric_names.includes(metric)) metric = data.metric_names[0];
     mpick.value = metric;
-    $("metric-help").textContent = METRIC_HELP[metric] || "";
+    $("metric-help").textContent = $("metric-help").title = METRIC_HELP[metric] || "";
     msvg.textContent = "";
     const w = msvg.clientWidth, h = msvg.clientHeight;
     if (w <= 0 || h <= 0) return;
@@ -635,6 +635,15 @@ export function initEvolution(ctx) {
     const bits = [names, i.event, i.result && i.result !== "*" ? i.result : "", `${stats.plies} moves`,
       `${stats.shown} positions shown of ${stats.merged} found`].filter(Boolean);
     box.append(bits.join(" · "));
+    const q = data.quality && data.quality.counts;
+    if (q) {
+      const part = (side, c) => `${side}: ${c["?!"]} ?!  ${c["?"]} ?  ${c["??"]} ??`;
+      const span = document.createElement("span");
+      span.className = "quality";
+      span.title = "Inaccuracies (?!), mistakes (?) and blunders (??): moves that gave away 10, 20 or 30 points of winning chances or more, by the analysis at the depth it ran";
+      span.textContent = `  ·  ${part("White", q.w)}  ·  ${part("Black", q.b)}`;
+      box.append(span);
+    }
     if (stale) {
       const w = document.createElement("span");
       w.className = "warn";
@@ -683,7 +692,7 @@ export function initEvolution(ctx) {
       setRunning(false);
       if (st.state === "done") {
         const d = await api().evolution_result();
-        if (d) setData(d);
+        if (d) { setData(d); ctx.render(await api().state()); }      // the moves get their marks
       } else if (st.state === "cancelled") {
         setInfo("Cancelled.");
       } else if (st.state === "error") {
@@ -798,7 +807,7 @@ export function initEvolution(ctx) {
       if (st.state === "running") watch();
       else if (st.state === "done") {
         const r = await api().evolution_result();
-        if (r) setData(r);
+        if (r) { setData(r); ctx.render(await api().state()); }
       }
     } catch (e) { /* the bridge is not up */ }
   }

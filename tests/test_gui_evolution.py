@@ -25,7 +25,6 @@ def ready(page):
 
 def analyse(page, pgn=SCHOLARS):
     ready(page)
-    page.click("#tab-evo")
     page.click("#evo-pgn")
     page.fill("#pgn-text", pgn)
     page.click("#pgn-load")
@@ -92,15 +91,12 @@ def test_an_old_graph_says_so_when_the_game_changes(make_page, stockfish, tmp_pa
     analyse(page)
     page.click("#btn-undo")
     page.wait_for_function("document.getElementById('evo-title').textContent.includes('another game')")
-    page.click("#tab-uci")
-    assert page.is_hidden("#evo")
     assert not errors, errors
 
 
 def test_a_bad_pgn_is_explained_in_the_dialog(make_page, stockfish, tmp_path):
     page, errors = make_page(quick_api(stockfish, tmp_path))
     ready(page)
-    page.click("#tab-evo")
     page.click("#evo-pgn")
     page.fill("#pgn-text", "not a game")
     page.click("#pgn-load")
@@ -112,7 +108,6 @@ def test_a_bad_pgn_is_explained_in_the_dialog(make_page, stockfish, tmp_path):
 def test_cancel_leaves_no_graph(make_page, stockfish, tmp_path):
     page, errors = make_page(quick_api(stockfish, tmp_path))
     ready(page)
-    page.click("#tab-evo")
     page.click("#evo-pgn")
     page.fill("#pgn-text", "1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 *")
     page.click("#pgn-load")
@@ -256,4 +251,20 @@ def test_the_export_dialog_shows_the_annotated_game(make_page, stockfish, tmp_pa
     assert "With the engine's scores" in page.inner_text("#export-msg")
     page.click("#export-close")
     page.wait_for_function("!document.getElementById('export-dialog').open")
+    assert not errors, errors
+
+
+def test_the_moves_get_their_marks_once_the_game_is_analysed(make_page, stockfish, tmp_path):
+    api = quick_api(stockfish, tmp_path)
+    page, errors = make_page(api)
+    ready(page)
+    assert page.locator("#moves .q").count() == 0
+    analyse(page)
+    page.wait_for_selector("#evo-title .quality")
+    marks = [m for m in api.state()["marks"] if m]
+    assert page.locator("#moves .q").count() == len(marks)
+    assert "?!" in page.inner_text("#evo-title") and "White:" in page.inner_text("#evo-title")
+    if marks:                                     # a blunder shows red, an inaccuracy gold
+        first = page.locator("#moves .mv.q1, #moves .mv.q2, #moves .mv.q3").first
+        assert first.inner_text().endswith(("?!", "?", "??"))
     assert not errors, errors

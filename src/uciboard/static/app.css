@@ -5,7 +5,7 @@
   --ui: system-ui, "Segoe UI", sans-serif; --mono: ui-monospace, "Cascadia Mono", Consolas, monospace;
   --sq-light: #dee3e6; --sq-dark: #8ca2ad;
   --arrow-w: #3f6fc4; --arrow-b: #d06a1f;
-  --board: max(320px, min(calc(100vh - 320px), calc(100vw - 480px)));
+  --board: max(300px, min(calc(100vh - 235px), 50vw));
 }
 @media (prefers-color-scheme: dark) {
   :root {
@@ -41,7 +41,7 @@ button.quiet:hover { color: var(--ink); }
 @media (prefers-reduced-motion: reduce) { .engine[data-state="analysing"] .dot { animation: none; } }
 
 .desk { flex: 1; min-height: 0; display: flex; gap: 16px; padding: 14px; }
-.left { width: var(--board); flex: none; display: flex; flex-direction: column; gap: 8px; overflow-y: auto; min-height: 0; }
+.left { width: var(--board); flex: none; display: flex; flex-direction: column; gap: 6px; min-height: 0; }
 .left > * { flex: none; }
 #board { width: var(--board); height: var(--board); box-shadow: 0 2px 10px rgba(0,0,0,.22); }
 /* the board: light squares, with the dark ones drawn as a 2x2 checker repeated four times across */
@@ -61,12 +61,12 @@ cg-board square.check {
 .cg-wrap coords { font: 600 10px var(--ui); opacity: 1; }
 .cg-wrap coords coord { color: rgba(29, 42, 48, .62) !important; }
 
-.moves { min-height: 2.8em; max-height: 4.2em; overflow-y: auto; font-family: var(--mono); font-size: 13px; color: var(--ink); }
+.moves { min-height: 2.9em; max-height: 4.4em; overflow-y: auto; font-family: var(--mono); font-size: 13px; color: var(--ink); }
 .moves .no { color: var(--muted); margin-right: 3px; }
 .moves .mv { margin-right: 7px; }
 .moves .mv.cur { font-weight: 700; }
 
-.status { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 8px 12px; min-height: 4.4em; }
+.status { background: var(--panel); border-bottom: 1px solid var(--line); padding: 8px 12px; min-height: 4.4em; }
 .numbers { display: flex; align-items: baseline; gap: 14px; }
 .eval { font: 650 22px var(--mono); min-width: 4.6em; }
 .pv { font-family: var(--mono); font-size: 13px; margin-top: 2px; overflow-wrap: anywhere; }
@@ -77,11 +77,13 @@ cg-board square.check {
 
 .right { flex: 1; min-width: 0; display: flex; flex-direction: column; background: var(--panel);
   border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
-.pane-head { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--line); color: var(--muted); }
 .check { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
-.pane { flex: 1; min-height: 0; overflow-y: auto; background: var(--pane-bg); padding: 6px 10px;
+.uci { flex: none; border-top: 1px solid var(--line); }
+.uci-head { display: flex; align-items: center; gap: 8px; padding: 3px 10px; color: var(--muted); font-size: 12px; }
+/* five lines, newest at the bottom; each log line is one row (the full line is in its tooltip) */
+.pane { height: calc(5 * 1.5em + 5px); overflow-y: auto; background: var(--pane-bg); padding: 0 10px 5px;
   font: 12px/1.5 var(--mono); }
-.pane .l { white-space: pre-wrap; overflow-wrap: anywhere; }
+.pane .l { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .pane .in { color: var(--pane-sent); }
 .pane .best { color: var(--pane-best); font-weight: 700; }
 .pane .sys { color: var(--pane-sys); }
@@ -106,7 +108,7 @@ cg-board square.check {
 .pv .far { opacity: .45; font-weight: 400; }
 .pv .no { color: var(--muted); }
 
-/* ---- tabs in the right-hand panel, and buttons that matter */
+/* ---- buttons that matter */
 :root { --graph-bg: #e9ede9; --graph-ink: #1c2622; --edge: #0d1a12; --node-white: #fafaf5; --node-black: #161616; --node-draw: #a3a9a6;
   --c-game: #1f62e0; --c-alt: #e8780f; }
 @media (prefers-color-scheme: dark) {
@@ -114,9 +116,6 @@ cg-board square.check {
 }
 button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 button.primary:disabled { opacity: .5; cursor: default; }
-.tabs { display: inline-flex; gap: 2px; }
-.tabs button { border-color: transparent; background: transparent; color: var(--muted); padding: 4px 12px; border-radius: 6px; }
-.tabs button[aria-selected="true"] { background: var(--bg); color: var(--ink); border-color: var(--line); }
 .right > [hidden] { display: none !important; }
 
 /* ---- looking at a position from the graph */
@@ -187,7 +186,6 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
   border: 1px solid var(--line); border-radius: 6px; padding: 8px; resize: vertical; }
 .pgn-msg { min-height: 1.3em; color: var(--warn); font-size: 13px; }
 .pgn-buttons { display: flex; justify-content: flex-end; gap: 8px; }
-.pane-head[data-tab="evo"] .uci-tools { display: none; }
 .evo-title .warn { color: var(--warn); }
 .evo-chart .ylab { text-anchor: start; fill: var(--muted); opacity: .8; font-size: 9px; }
 .evo-chart .grid { stroke: var(--line); stroke-width: .5; stroke-dasharray: 2 3; }
@@ -228,7 +226,7 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
 /* the measures strip under the score chart */
 .metric-bar { display: flex; align-items: center; gap: 8px; margin: 8px 10px 0; font-size: 12px; }
 .metric-bar[hidden], .evo-metrics[hidden] { display: none; }
-.metric-bar .muted { flex: 1; min-width: 0; }
+.metric-bar .muted { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .evo-metrics { height: 96px; }
 .evo-metrics .mline { fill: none; stroke-width: 1.8; }
 .evo-metrics .mline.w, .evo-metrics .mdot.w { stroke: #1b9e8a; }
@@ -258,3 +256,27 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
 .struct i.p-isolated { box-shadow: inset 0 0 0 3px #b5532a; }
 .struct i.p-doubled { outline: 3px dashed #7a3fb0; outline-offset: -3px; }
 .t-struct::before { background: #d6a014; border-radius: 2px !important; }
+
+/* the right column: the line and what the position shows, the graph, then five lines of UCI output */
+.right > .status { flex: none; }
+.right > .evo { flex: 1; min-height: 0; }
+.status .numbers { flex-wrap: wrap; }
+.status .tactic-tools { margin-top: 4px; }
+.fen { margin-top: 2px; }
+.msg { min-height: 1.2em; }
+.left { overflow: visible; }
+
+/* a short window: tighter charts and four lines of UCI output, so the right column does not need to scroll */
+@media (max-height: 900px) {
+  .evo-chart { height: 84px; }
+  .evo-metrics { height: 70px; }
+  .evo-graph { flex-basis: 150px; }
+  .pane { height: calc(4 * 1.5em + 5px); }
+}
+
+/* inaccuracy ?!  mistake ?  blunder ?? after a move */
+.moves .mv .q { font-weight: 700; }
+.moves .mv.q1 .q { color: #c79300; }
+.moves .mv.q2 .q { color: #e0701a; }
+.moves .mv.q3 .q { color: #cc2f2f; }
+.evo-title .quality { white-space: nowrap; }
