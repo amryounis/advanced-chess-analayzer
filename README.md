@@ -6,6 +6,9 @@ and shows the engine's raw output beside the board.
 Move pieces for both sides; every move restarts the analysis on the new position, and
 it keeps going until you move again, pause it, or the game ends.
 
+<img width="1920" height="1042" alt="image" src="https://github.com/user-attachments/assets/8be93083-ea8a-450d-9ea7-047612864c9b" />
+
+
 - **Board**: [chessground](https://github.com/lichess-org/chessground) (the Lichess board,
   vendored, works offline), legal moves only, promotion chooser, castling, en passant.
 - **UCI output**, laid out like the engine window of Arena: a status row (engine and its hash
