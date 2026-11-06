@@ -134,8 +134,10 @@ cache_dir = ""         # where finished analyses are kept (default: beside the c
 After an analysis, the moves that gave something away are marked in the move list, in the PGN
 export (as the standard `?!`, `?`, `??` symbols) and counted per side under the graph's title.
 A move is judged by how much it dropped the mover's chance of winning, using the winning-chances
-curve Lichess publishes: `win% = 50 + 50 · (2 / (1 + e^(−0.00368208 · cp)) − 1)`, scores clipped to
-±10 pawns. A drop of 10 points is an inaccuracy (`?!`), 20 a mistake (`?`), 30 a blunder (`??`).
+curve Lichess publishes ([Lichess accuracy metric](https://lichess.org/page/accuracy)):
+`win% = 50 + 50 · (2 / (1 + e^(−0.00368208 · cp)) − 1)`. The cut-offs are this project's own choice,
+not Lichess's: scores are clipped to ±10 pawns, and a drop of 10 points is an inaccuracy (`?!`),
+20 a mistake (`?`), 30 a blunder (`??`).
 Using winning chances means two pawns given up while a rook ahead count for little, and the same
 loss in an equal position counts for a lot.
 
@@ -262,6 +264,28 @@ skipped when there is none. The browser tests also need `playwright install chro
 | `config.py` | Where Stockfish is and how it runs |
 | `app.py` | The window (pywebview) and a local static server |
 | `static/` | The page: board, moves, the line and overlays, the Evolution graph, the UCI strip; `evo.js` draws the graph and the score chart |
+
+## References
+
+The two papers behind the main features. Each module's docstring says where the code follows the
+paper and where it had to fill a gap.
+
+1. Wei-Li Lu, Yu-Shuen Wang, Wen-Chieh Lin. **Chess Evolution Visualization.** *IEEE Transactions on
+   Visualization and Computer Graphics* 20(5), 702–713, 2014. [doi:10.1109/TVCG.2014.2299803](https://doi.org/10.1109/TVCG.2014.2299803).
+   Used for the **Evolution graph**: sequences from the engine, the decision tree, merging and
+   shortening, the events (effective checks, captures), edge thickness, the layout of equation (1)
+   (`evolution.py`, `layout.py`) and the score chart. Differences: [Where this differs from the paper](#where-this-differs-from-the-paper).
+2. M. Rudolph-Lilith. **ChessY: A Mathematica toolbox for the generation, visualization and analysis
+   of positional chess graphs.** *SoftwareX* 9, 2019. [doi:10.1016/j.softx.2018.12.004](https://doi.org/10.1016/j.softx.2018.12.004).
+   Used for the **positional graph measures** under the score chart: control, mobility,
+   connectedness, offensiveness, defensiveness and reach (`posgraph.py`). Dominance is left out
+   (see [Positional graph measures](#positional-graph-measures-chessy)). The board's square-control heat map is this project's own
+   (net attackers per square), not from the paper.
+
+Not papers, but used directly: the [Lichess winning-chances curve](https://lichess.org/page/accuracy)
+(move quality), [Stockfish](https://stockfishchess.org/) (the engine),
+[python-chess](https://python-chess.readthedocs.io/), [chessground](https://github.com/lichess-org/chessground)
+(the board) and [pywebview](https://pywebview.flowrl.app/) (the window).
 
 ## Licence
 

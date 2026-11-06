@@ -10,7 +10,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
-authors = [{ name = "Amr" }]
+authors = [{ name = "Amr Younis", email = "youam50@hotmail.com" }]
 keywords = ["chess", "uci", "stockfish", "gui", "analysis"]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -24,6 +24,10 @@ dependencies = [
     "chess>=1.10",
     "tomli>=2.0; python_version < '3.11'",
 ]
+
+[project.urls]
+Homepage = "https://github.com/amryounis/advance-chess-analayzer"
+Issues = "https://github.com/amryounis/advance-chess-analayzer/issues"
 
 [project.optional-dependencies]
 gui = ["pywebview>=5"]
