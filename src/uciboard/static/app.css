@@ -35,7 +35,7 @@ button.quiet:hover { color: var(--ink); }
 .engine { display: inline-flex; align-items: center; gap: 6px; color: var(--muted); font-size: 13px; margin-left: 10px; }
 .engine .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); }
 .engine[data-state="analysing"] .dot { background: var(--accent); animation: pulse 1.4s ease-in-out infinite; }
-.engine[data-state="paused"] .dot, .engine[data-state="idle"] .dot { background: var(--pane-sent); }
+.engine[data-state="off"] .dot, .engine[data-state="idle"] .dot { background: var(--pane-sent); }
 .engine[data-state="none"] .dot, .engine[data-state="exited"] .dot { background: var(--warn); }
 @keyframes pulse { 50% { opacity: .35; } }
 @media (prefers-reduced-motion: reduce) { .engine[data-state="analysing"] .dot { animation: none; } }
@@ -255,6 +255,17 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
 .struct i.p-isolated { box-shadow: inset 0 0 0 3px #b5532a; }
 .struct i.p-doubled { outline: 3px dashed #7a3fb0; outline-offset: -3px; }
 .t-struct::before { background: #d6a014; border-radius: 2px !important; }
+.t-removable::before { background: #c0692b; } .t-overload::before { background: #d63c8c; }
+.t-king::before { background: #8d98a8; }
+
+/* king safety and safe squares, laid over the board */
+.zones, .safe { position: absolute; inset: 0; display: grid; grid-template: repeat(8, 1fr) / repeat(8, 1fr);
+  pointer-events: none; z-index: 2; }
+.zones[hidden], .safe[hidden] { display: none; }
+.zones i.danger { background: rgba(214, 47, 47, .26); }
+.zones i.escape { background: radial-gradient(circle, rgba(36, 160, 84, .75) 0 16%, transparent 18%); }
+.safe i.ok { background: rgba(36, 160, 84, .30); }
+.safe i.bad { background: rgba(214, 47, 47, .36); }
 
 /* the right column: the line and what the position shows, the graph, then five lines of UCI output */
 .right > .status { flex: none; }
@@ -290,7 +301,7 @@ dialog::backdrop { background: rgba(0,0,0,.4); }
 .uci-stats .cell:empty { min-width: 2.5em; }
 .uci-stats .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--muted); flex: none; }
 .uci[data-state="analysing"] .uci-stats .dot { background: var(--accent); }
-.uci[data-state="idle"] .uci-stats .dot, .uci[data-state="paused"] .uci-stats .dot { background: #d6a014; }
+.uci[data-state="idle"] .uci-stats .dot, .uci[data-state="off"] .uci-stats .dot { background: #d6a014; }
 .uci[data-state="none"] .uci-stats .dot, .uci[data-state="exited"] .uci-stats .dot { background: var(--warn); }
 .uci-stats > .check, .uci-stats #raw-tools { padding: 0 10px; display: inline-flex; align-items: center; gap: 8px; color: var(--muted); }
 .uci-table { overflow-y: auto; background: var(--pane-bg); font: 12px/1.5 var(--mono); padding: 0 0 5px; }

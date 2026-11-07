@@ -3,8 +3,11 @@
 A small desktop chess board that runs a UCI engine (Stockfish) in **infinite analysis**
 and shows the engine's raw output beside the board.
 
-Move pieces for both sides; every move restarts the analysis on the new position, and
-it keeps going until you move again, pause it, or the game ends.
+Move pieces for both sides. **Analysis is off when the program starts**, so an idle window costs
+no CPU: press **Analyse** (or Space) to start the engine. From then on every move restarts the
+analysis on the new position, and it keeps going until you press **Stop**, or the game ends. To
+have it on at start-up, set `analyse = true` in the config file or start with `uciboard --analyse`.
+(Stockfish's own UCI "ponder" mode, thinking on the opponent's time, is not used.)
 
 <img width="1920" height="1042" alt="image" src="https://github.com/user-attachments/assets/8be93083-ea8a-450d-9ea7-047612864c9b" />
 
@@ -28,7 +31,7 @@ it keeps going until you move again, pause it, or the game ends.
   second picker draws both sides, White only or Black only (the count is of the line's moves, so
   "White only" with 8 shows White's first four; the numbers keep their place in the line).
   Arrows only ever show a line for the position on the board.
-- **Controls**: Undo, New, Flip (F), Pause / Resume (Space), and a FEN box:
+- **Controls**: Undo, New, Flip (F), Analyse / Stop (Space), and a FEN box:
   paste a position and press Enter.
 - **Moving through the game**: the arrows under the board (or Left / Right, Home / End) step back
   and forward, and clicking a move in the list jumps to it. The later moves stay in the list,
@@ -71,7 +74,23 @@ Two layers, kept apart so you can tell what Stockfish thinks from what is simply
 - **Pins and skewers**: purple (pin, absolute or to something worth more) and teal (skewer) arrows
   from the pinning piece to the piece behind. python-chess's own `is_pinned` only knows pins to the
   king, so the others are found by looking along the line. A pin is not reported if the pinning
-  piece itself can simply be won. A skewer against the king is a check and is not listed.
+  piece itself can simply be won. A skewer against the king is a check and is not listed. Pins and
+  skewers that are not to the king are only shown when the piece behind can really be lost: once
+  the front piece has moved off the line, taking the back piece must win material. (A knight
+  "skewered" against a pawn that is defended costs nothing, so it is not drawn.)
+- **Defenders**: a burnt-orange ring on a piece that is the *only* defender of something that is
+  attacked, with an arrow to what it guards. It is drawn when the other side can take that
+  defender, or trade for it, and the guarded piece would then be lost (*removable defender*). A
+  magenta ring and arrows mark a piece that is the only defender of two or more attacked pieces
+  (*overloaded*). A king is never counted as a defender here. This is an exchange count, so it says
+  "can be traded off", not "wins a piece": in 1.e4 e5 2.Nf3 Nc6 3.Bb5 it points at Nc6 guarding e5,
+  and Bxc6 dxc6 Nxe5 is met by Qd4, which regains the pawn.
+- **King safety** (off by default): round each king, the squares the other side attacks (red,
+  counting a slider's attack through the king's own square) and the squares it could step to (green
+  dot); the list under the line says which, and whether the king is in check.
+- **Safe squares**: pick a piece up and the squares it can go to turn green when it is safe there or
+  the move wins material, red when the piece can be won there (what it captures is counted against
+  what it can lose).
 
 **The engine's line** (the moves Stockfish chose, named by geometry): `fork` (two targets that are
 the king, worth more than the forker, or undefended, and the forker cannot be taken profitably),
@@ -120,7 +139,7 @@ Settings in the toolbar: **Depth** and **Seconds** (the most time spent on one p
 uses depth 20, which can take many minutes for a long game; the default is 16. On a two-core test
 machine a 12-move game took about 40 seconds at the defaults. Finished analyses are kept (see
 `cache_dir`) and reused when the same game is analysed again with the same settings (a release that changes what a saved graph contains, like 0.5.0, analyses the game again once). The live
-analysis of the board pauses while the job runs and resumes afterwards; *Cancel* stops it quickly.
+analysis of the board (if it is on) pauses while the job runs and resumes afterwards; *Cancel* stops it quickly.
 
 More settings in uciboard's config file:
 
@@ -238,7 +257,10 @@ stockfish_path = "C:/engines/stockfish/stockfish.exe"
 threads = 6        # default: half the logical cores
 hash_mb = 512      # default 512
 multipv = 1        # lines the engine searches at once (the summary shows line 1)
+analyse = false    # true: start analysing at once (default: off until you press Analyse)
 ```
+
+`uciboard --analyse` does the same for one run and beats the file.
 
 ## Development
 
@@ -257,7 +279,7 @@ skipped when there is none. The browser tests also need `playwright install chro
 | --- | --- |
 | `uci.py` | Drives the engine process; infinite search that can jump to a new position, and drops the old search's output when it does |
 | `api.py` | What the page calls: board, moves, polling of the output (log, depth table, counters), summary and the best line's arrows; PGN loading, viewing a position, the Evolution job |
-| `tactics.py` | Exchange evaluation, loose pieces, pins and skewers, and the labels and net material of an engine line (python-chess only) |
+| `tactics.py` | Exchange evaluation, loose pieces, pins and skewers, defenders, king zones, safe squares, and the labels and net material of an engine line (python-chess only) |
 | `structure.py` | Open and half-open files, doubled and isolated pawns |
 | `quality.py` | Inaccuracy, mistake and blunder marks from the analysis |
 | `pgnexport.py` | The game as a PGN with the analysis in the comments |
@@ -284,6 +306,11 @@ paper and where it had to fill a gap.
    connectedness, offensiveness, defensiveness and reach (`posgraph.py`). Dominance is left out
    (see [Positional graph measures](#positional-graph-measures-chessy)). The board's square-control heat map is this project's own
    (net attackers per square), not from the paper.
+
+The defender, king-safety and safe-square overlays follow the ideas of the "Insights" overlay in
+[EngineBattle](https://github.com/lepned/EngineBattle) (GPL-3.0, by lepned), which shows removable and
+overloaded defenders, king danger squares and safe squares on its board. The rules here are written
+anew in Python from a reading of its behaviour; no code was copied.
 
 Not papers, but used directly: the [Lichess winning-chances curve](https://lichess.org/page/accuracy)
 (move quality), [Stockfish](https://stockfishchess.org/) (the engine),

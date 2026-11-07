@@ -17,6 +17,7 @@ Other settings (all optional) go in uciboard's config file:
     threads = 4        # search threads
     hash_mb = 512      # transposition table size
     multipv = 1        # lines shown at once
+    analyse = false    # start analysing at once (default: off; the Analyse button turns it on)
 
 Evolution tab (the paper's graph; all optional):
     evo_depth = 16         # the paper uses 20: deeper is slower, 20 may take many minutes
@@ -51,6 +52,7 @@ class Settings:
     threads: int = 1
     hash_mb: int = 512
     multipv: int = 1
+    analyse: bool = False           # live analysis on at start-up; off keeps the engine idle (no CPU)
     evo_depth: int = 16             # Evolution tab: search depth per position (the paper uses 20)
     evo_lines: int = 9              # sequences asked for at each position (the paper: 9)
     evo_seconds: float = 20.0       # most time on one position
@@ -113,13 +115,14 @@ def default_threads() -> int:
 
 
 def load_settings(stockfish: Optional[str] = None, own_config: Optional[Path] = None,
-                  chesscoach_config: Optional[Path] = None) -> Settings:
+                  chesscoach_config: Optional[Path] = None,
+                  analyse: Optional[bool] = None) -> Settings:
     s = Settings(threads=default_threads())
 
     own = Path(own_config) if own_config else user_config_path()
     data = _read(own) if own.exists() else {}
     unknown = set(data) - {"stockfish_path", "threads", "hash_mb", "multipv", "evo_depth",
-                           "evo_lines", "evo_seconds", "evo_check_depth", "cache_dir"}
+                           "evo_lines", "evo_seconds", "evo_check_depth", "cache_dir", "analyse"}
     if unknown:
         raise ConfigError(f"Unknown setting(s) in {own}: {', '.join(sorted(unknown))}")
     if "threads" in data:
@@ -128,6 +131,12 @@ def load_settings(stockfish: Optional[str] = None, own_config: Optional[Path] = 
         s.hash_mb = _int("hash_mb", data["hash_mb"], 1, 1_000_000)
     if "multipv" in data:
         s.multipv = _int("multipv", data["multipv"], 1, 20)
+    if "analyse" in data:
+        if not isinstance(data["analyse"], bool):
+            raise ConfigError(f"analyse must be true or false, not {data['analyse']!r}")
+        s.analyse = data["analyse"]
+    if analyse is not None:                  # the command line wins over the file
+        s.analyse = analyse
     if "evo_depth" in data:
         s.evo_depth = _int("evo_depth", data["evo_depth"], 1, 60)
     if "evo_lines" in data:

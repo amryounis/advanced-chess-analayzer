@@ -13,7 +13,7 @@ SCHOLARS = "1. e4 e5 2. Bc4 Nc6 3. Qh5 Nf6 4. Qxf7# 1-0"
 
 
 def quick_api(stockfish, tmp_path):
-    s = config.load_settings(stockfish=stockfish, own_config=tmp_path / "none.toml")
+    s = config.load_settings(stockfish=stockfish, own_config=tmp_path / "none.toml", analyse=True)
     s.cache_dir = str(tmp_path / "cache")
     s.evo_depth, s.evo_seconds, s.evo_check_depth = 6, 5.0, 5
     return Api(s)

@@ -66,13 +66,14 @@ def test_new_and_pgn_loading_reset_the_cursor(tmp_path):
 def test_the_buttons_keys_and_move_list_step_through_the_game(make_page, stockfish, tmp_path):
     import pytest  # noqa: F401
     from uciboard import config
-    s = config.load_settings(stockfish=stockfish)
+    s = config.load_settings(stockfish=stockfish, analyse=True)
     api = Api(s)
     api.load_pgn(SCHOLARS)
     api.start()                      # so the page's own start() answers at once and cannot land after a click
     page, errors = make_page(api)
     fen = "document.getElementById('board').dataset.fen"
     page.wait_for_function(f"{fen}.startsWith('r1bqkb1r/pppp1Qpp')")        # the final position
+    page.wait_for_selector("#engine[data-state]:not([data-state=none])")     # the page's own start() has answered
     assert page.is_disabled("#nav-next") and page.is_disabled("#nav-end") and page.is_enabled("#nav-prev")
     assert page.inner_text("#nav-pos") == "move 7 of 7"
     page.click("#nav-prev")

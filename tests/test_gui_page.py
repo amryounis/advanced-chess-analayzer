@@ -34,7 +34,7 @@ def drag(page, a, b):
 
 
 def engine_api(stockfish):
-    return Api(config.load_settings(stockfish=stockfish))
+    return Api(config.load_settings(stockfish=stockfish, analyse=True))
 
 
 @pytest.mark.engine
@@ -122,8 +122,8 @@ def test_controls_undo_flip_pause_resume(make_page, stockfish):
     assert page.locator("#board.orientation-white").count() == 1
 
     page.click("#btn-pause")
-    page.wait_for_selector("#engine[data-state=paused]")
-    assert page.inner_text("#btn-pause") == "Resume"
+    page.wait_for_selector("#engine[data-state=off]")
+    assert page.inner_text("#btn-pause") == "Analyse"
     page.wait_for_function("document.getElementById('pane').textContent.includes('bestmove')")
     page.click("#btn-pause")
     page.wait_for_selector("#engine[data-state=analysing]")
@@ -292,4 +292,21 @@ def test_the_table_starts_again_for_another_position(make_page, stockfish):
     page.wait_for_function("""() => { const ds = [...document.querySelectorAll('#uci-table .ur .d')]
         .map(d => Number(d.textContent.split('/')[0])); return ds.length > 0 && ds.length < 40 &&
         ds.every((d, i) => i === 0 || d <= ds[i - 1]); }""")
+    assert not errors, errors
+
+
+@pytest.mark.engine
+def test_the_page_starts_with_analysis_off_and_the_button_turns_it_on(make_page, stockfish):
+    api = Api(config.load_settings(stockfish=stockfish))              # the default: off
+    page, errors = make_page(api)
+    page.wait_for_selector("#engine[data-state=off]")
+    assert page.inner_text("#btn-pause") == "Analyse"
+    assert "off" in page.inner_text("#engine-text")
+    assert "Press Analyse" in page.inner_text("#line-note")
+    page.keyboard.press("Space")                                      # the same switch as the button
+    page.wait_for_selector("#engine[data-state=analysing]")
+    assert page.inner_text("#btn-pause") == "Stop"
+    page.click("#btn-pause")
+    page.wait_for_selector("#engine[data-state=off]")
+    assert page.inner_text("#btn-pause") == "Analyse"
     assert not errors, errors

@@ -8,7 +8,7 @@ const POLL_MS = 150;
 
 let api = null;
 let cursor = 0;
-let paused = false;
+let engineOn = false;                // is the live analysis switched on?
 let current = null;                  // the last state from Python
 let orientation = "white";
 let evo = null;                      // the Evolution tab (evo.js), set up in init()
@@ -36,6 +36,8 @@ function arrowBrushes() {
   brushes.loose2 = { key: "loose2", color: "#d4a017", opacity: 0.85, lineWidth: 5 };
   brushes.pin = { key: "pin", color: "#8a4fc7", opacity: 0.75, lineWidth: 6 };
   brushes.skewer = { key: "skewer", color: "#1fa39a", opacity: 0.75, lineWidth: 6 };
+  brushes.removable = { key: "removable", color: "#c0692b", opacity: 0.8, lineWidth: 5 };
+  brushes.overload = { key: "overload", color: "#d63c8c", opacity: 0.8, lineWidth: 5 };
   return brushes;
 }
 
@@ -45,6 +47,7 @@ const board = Chessground($("board"), {
   animation: { duration: 150 },
   movable: { free: false, color: undefined, showDests: true, events: { after: onUserMove } },
   premovable: { enabled: false },
+  events: { select: (key) => onSelect(key), unselect: () => clearSafe() },
   highlight: { lastMove: true, check: true },
   drawable: { enabled: true, visible: true, brushes: arrowBrushes() },
 });
@@ -67,7 +70,7 @@ $("arrow-side").value = arrowSide;
 const drawnSide = (white) => arrowSide === "both" || (arrowSide === "white") === white;
 let lastSummary = null;
 let arrowKey = "";
-const show = { loose: true, pins: true, heat: false, structure: false };
+const show = { loose: true, pins: true, defenders: true, king: false, safe: true, heat: false, structure: false };
 for (const k of Object.keys(show)) {
   try {
     const v = localStorage.getItem("show-" + k);
@@ -79,6 +82,7 @@ for (const k of Object.keys(show)) {
 // ------------------------------------------------------------------ board
 
 function render(st) {
+  if (!current || current.fen !== st.fen) clearSafe();
   current = st;
   board.set({
     fen: st.fen,
@@ -261,6 +265,15 @@ function tacticShapes() {
       shapes.push({ orig: p.slider, dest: p.back, brush: p.kind === "skewer" ? "skewer" : "pin" });
     }
   }
+  if (show.defenders && t.defenders) {
+    // a ring on the defender and an arrow to each piece it guards
+    for (const [list, brush] of [[t.defenders.removable, "removable"], [t.defenders.overloaded, "overload"]]) {
+      for (const r of list) {
+        shapes.push({ orig: r.defender, brush });
+        for (const d of r.defends) shapes.push({ orig: r.defender, dest: d, brush });
+      }
+    }
+  }
   return shapes;
 }
 
@@ -289,6 +302,76 @@ function drawHeat() {
     cells[i].className = net > 0 ? "w" : net < 0 ? "b" : "";
     cells[i].style.setProperty("--k", String(Math.min(Math.abs(net), 4) / 4));
     cells[i].title = net ? `${net > 0 ? "White" : "Black"} +${Math.abs(net)}` : "";
+  }
+}
+
+// The name of the square under cell i of an overlay grid (screen position, top left first).
+function cellName(i) {
+  const col = i % 8, row = Math.floor(i / 8);
+  const file = orientation === "white" ? col : 7 - col;
+  const rank = orientation === "white" ? 7 - row : row;
+  return String.fromCharCode(97 + file) + (rank + 1);
+}
+
+function overlayGrid(cls, key) {
+  let grid = $("board").querySelector("." + cls);
+  if (!key) { if (grid) grid.hidden = true; return null; }
+  if (!grid) {
+    grid = document.createElement("div");
+    grid.className = cls;
+    for (let i = 0; i < 64; i++) grid.append(document.createElement("i"));
+    $("board").append(grid);
+  }
+  grid.hidden = false;
+  return grid;
+}
+
+// King safety: red on the squares next to a king that the other side attacks, a green dot on those it could step to.
+let zoneKey = "";
+function drawKing() {
+  const t = current && current.tactics;
+  const key = previewing || !show.king || !t || !t.kings ? "" : JSON.stringify([t.kings, orientation]);
+  if (key === zoneKey) return;
+  zoneKey = key;
+  const grid = overlayGrid("zones", key);
+  if (!grid) return;
+  const kind = {};
+  for (const z of Object.values(t.kings)) {
+    for (const s of z.danger) kind[s] = "danger";
+    for (const s of z.escape) kind[s] = "escape";
+  }
+  for (let i = 0; i < 64; i++) grid.children[i].className = kind[cellName(i)] || "";
+}
+
+// Safe squares: after picking a piece up, where it can go. Green: safe, or the move wins material;
+// red: the piece can be won there. Asked of Python once per selection.
+let safeMarks = null, safeKey = "";
+function clearSafe() {
+  safeMarks = null;
+  drawSafe();
+}
+async function onSelect(key) {
+  if (!show.safe || previewing || !current || current.viewing || current.over
+      || !current.dests || !current.dests[key]) { clearSafe(); return; }
+  const r = await api.safe_squares(key);
+  if (board.state.selected !== key) return;       // the user has moved on already
+  safeMarks = r.squares;
+  drawSafe();
+}
+// Putting a piece down by clicking it again, or dropping it off the board, deselects it without an
+// event of its own: so look whenever a pointer is released.
+$("board").addEventListener("pointerup", () => setTimeout(() => {
+  if (safeMarks && !board.state.selected) clearSafe();
+}, 60));
+function drawSafe() {
+  const key = previewing || !show.safe || !safeMarks ? "" : JSON.stringify([safeMarks, orientation]);
+  if (key === safeKey) return;
+  safeKey = key;
+  const grid = overlayGrid("safe", key);
+  if (!grid) return;
+  for (let i = 0; i < 64; i++) {
+    const v = safeMarks[cellName(i)];
+    grid.children[i].className = v === undefined ? "" : v ? "ok" : "bad";
   }
 }
 
@@ -329,6 +412,8 @@ function drawStructure() {
 function drawShapes() {
   drawHeat();
   drawStructure();
+  drawKing();
+  drawSafe();
   if (previewing) return;              // an Evolution arrow is being shown: nothing else on the board
   const s = lastSummary;
   let shapes = tacticShapes();
@@ -360,6 +445,18 @@ function renderTactics(st) {
   };
   if (show.loose) for (const f of t.loose) add(f.now ? "t-loose now" : "t-loose", f.text);
   if (show.pins) for (const p of t.pins) add(p.kind === "skewer" ? "t-skewer" : "t-pin", p.text);
+  if (show.defenders && t.defenders) {
+    for (const r of t.defenders.removable) add("t-removable", r.text);
+    for (const o of t.defenders.overloaded) add("t-overload", o.text);
+  }
+  if (show.king && t.kings) {
+    for (const side of ["white", "black"]) {
+      const z = t.kings[side];
+      if (!z) continue;
+      add("t-king", `${side} king ${z.king}: ` + (z.escape.length
+        ? `can step to ${z.escape.join(", ")}` : "has no square to step to") + (z.check ? " (in check)" : ""));
+    }
+  }
   if (show.structure && st.structure) for (const f of st.structure.found) add("t-struct", f.text);
 }
 
@@ -403,7 +500,8 @@ function renderSummary(s) {
     $("depth").textContent = "";
     $("nps").textContent = "";
     $("pv").textContent = "";
-    $("line-note").textContent = "";
+    $("line-note").textContent = !engineOn && !(current && current.over)
+      ? "Analysis is off, so the engine is idle. Press Analyse (or Space) to start it." : "";
     return;
   }
   const bound = s.bound === "lower" ? "≥ " : s.bound === "upper" ? "≤ " : "";
@@ -454,10 +552,15 @@ function tagTitle(t) {
   return "Double check: the king can only move";
 }
 
-const STATE_TEXT = { analysing: "analysing", paused: "paused", idle: "game over",
+const STATE_TEXT = { analysing: "analysing", off: "analysis off", idle: "game over",
                      busy: "analysing the whole game", none: "no engine", exited: "engine stopped" };
 
 function renderEngine(e) {
+  engineOn = !!e.on;
+  const b = $("btn-pause");
+  b.textContent = engineOn ? "Stop" : "Analyse";
+  b.setAttribute("aria-pressed", String(engineOn));
+  b.classList.toggle("primary", !engineOn && e.state !== "none" && e.state !== "exited");
   $("engine").dataset.state = e.state;
   $("uci").dataset.state = e.state;
   const mb = $("u-name").dataset.mb;
@@ -545,8 +648,8 @@ async function poll() {
     cursor = r.cursor;
     appendLines(r.lines);
     applyUci(r.uci);
-    renderSummary(r.summary);
     renderEngine(r.engine);
+    renderSummary(r.summary);
   } catch (e) {
     /* the window is closing, or the bridge is not up yet */
   } finally {
@@ -564,10 +667,8 @@ $("btn-undo").addEventListener("click", () => act(api.undo));
 $("btn-reset").addEventListener("click", () => act(api.reset));
 $("btn-flip").addEventListener("click", () => setOrientation(orientation === "white" ? "black" : "white"));
 $("btn-pause").addEventListener("click", async () => {
-  paused = !paused;
-  $("btn-pause").textContent = paused ? "Resume" : "Pause";
-  $("btn-pause").setAttribute("aria-pressed", String(paused));
-  await act(paused ? api.pause : api.resume);
+  await act(engineOn ? api.pause : api.resume);
+  poll();
 });
 
 $("btn-back").addEventListener("click", () => act(api.clear_view));

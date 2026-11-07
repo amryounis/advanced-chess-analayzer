@@ -18,7 +18,7 @@
   <button id="btn-undo" title="Take back the move on the board; if you stepped back, the moves after it go too">Undo</button>
   <button id="btn-reset" title="Back to the starting position">New</button>
   <button id="btn-flip" title="Turn the board round (F)">Flip</button>
-  <button id="btn-pause" title="Stop or restart the analysis (Space)" aria-pressed="false">Pause</button>
+  <button id="btn-pause" title="Start or stop the engine's analysis (Space). Off by default: an idle engine uses no CPU." aria-pressed="false">Analyse</button>
 </header>
 
 <main class="desk">
@@ -64,6 +64,9 @@
         <span class="muted">Show on the board</span>
         <label class="check" title="Pieces the other side can win by an exchange (counted properly, not just attackers against defenders). Red: it is their move now."><input type="checkbox" id="show-loose" checked> Loose pieces</label>
         <label class="check" title="Pieces that cannot move without losing something behind them, and valuable pieces with something behind them"><input type="checkbox" id="show-pins" checked> Pins and skewers</label>
+        <label class="check" title="A piece that is the only defender of something attacked. Arrow from the defender to what it guards; a ring marks the defender. Burnt orange: the other side can take it or trade it off. Magenta: it guards two or more pieces, so it is overloaded. A count of exchanges only, so read it as 'can be traded off', not 'wins a piece'."><input type="checkbox" id="show-defenders" checked> Defenders</label>
+        <label class="check" title="The squares round each king: red where the other side attacks them, a green dot where the king could step"><input type="checkbox" id="show-king"> King safety</label>
+        <label class="check" title="Pick up a piece: the squares it can go to are green when it is safe there (or wins material) and red when it can be won there"><input type="checkbox" id="show-safe" checked> Safe squares</label>
         <label class="check" title="Open and half-open files (gold stripes), doubled pawns (dashed box) and isolated pawns (solid box)"><input type="checkbox" id="show-structure"> Pawn structure</label>
         <label class="check" title="Who attacks each square and how often: teal where White has more attackers, rose where Black has. Counts attackers, so a pawn's diagonal counts even on an empty square."><input type="checkbox" id="show-heat"> Square control</label>
       </div>

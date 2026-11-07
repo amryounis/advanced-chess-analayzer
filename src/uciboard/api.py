@@ -87,7 +87,7 @@ class Api:
         self._root_fen = self._board.fen()
         self._engine: Optional[UciEngine] = None
         self._error = ""                     # why there is no engine, if there is none
-        self._paused = False
+        self._paused = not self._settings.analyse   # analysis is opt-in: an idle engine uses no CPU
         self._lock = threading.RLock()       # board + engine control
         self._buf_lock = threading.Lock()    # output lines + summary (the reader thread)
         self._lines: list = []
@@ -130,6 +130,7 @@ class Api:
             return self._state()
 
     def pause(self) -> dict:
+        """Stop the live analysis (the Stop button). The engine stays loaded and idle."""
         with self._lock:
             self._paused = True
             if self._engine and self._engine.alive:
@@ -137,6 +138,7 @@ class Api:
             return self._state()
 
     def resume(self) -> dict:
+        """Start the live analysis of the position on the board (the Analyse button)."""
         with self._lock:
             self._paused = False
             self._restart_analysis()
@@ -315,18 +317,18 @@ class Api:
 
     def _engine_state(self, engine) -> dict:
         if engine is None:
-            return {"state": "none", "name": "", "error": self._error}
+            return {"state": "none", "name": "", "error": self._error, "on": not self._paused}
         if not engine.alive:
-            return {"state": "exited", "name": engine.name, "error": self._error}
+            return {"state": "exited", "name": engine.name, "error": self._error, "on": not self._paused}
         if self._evo_busy:
             state = "busy"
         elif self._shown().is_game_over(claim_draw=False):
             state = "idle"
         elif self._paused:
-            state = "paused"
+            state = "off"
         else:
             state = "analysing"
-        return {"state": state, "name": engine.name, "error": self._error}
+        return {"state": state, "name": engine.name, "error": self._error, "on": not self._paused}
 
     # -------------------------------------------------------------- board
 
@@ -389,7 +391,16 @@ class Api:
         try:
             return tactics.analyse(board)
         except Exception:                              # noqa: BLE001 - overlays are optional
-            return {"loose": [], "pins": []}
+            return {"loose": [], "pins": [], "defenders": {"removable": [], "overloaded": []}, "kings": {}}
+
+    def safe_squares(self, square: str) -> dict:
+        """Where the piece on `square` can go without being lost (for the board's safe-squares marks)."""
+        with self._lock:
+            try:
+                sq = chess.parse_square(square)
+                return {"square": square, "squares": tactics.safe_squares(self._game_board(), sq)}
+            except (ValueError, TypeError):
+                return {"square": square, "squares": {}}
 
     @staticmethod
     def _result_text(b: chess.Board) -> str:

@@ -77,7 +77,8 @@ def test_nothing_to_capture_and_the_king_are_zero():
 
 def test_the_starting_position_has_nothing_loose_nothing_pinned():
     out = tactics.analyse(chess.Board())
-    assert out == {"loose": [], "pins": []}
+    assert out["loose"] == [] and out["pins"] == []
+    assert out["defenders"] == {"removable": [], "overloaded": []}
 
 
 # ------------------------------------------------------------- pins and skewers
@@ -267,3 +268,63 @@ def test_line_themes_on_random_lines_is_well_formed():
         r = tactics.line_themes(board, line)
         assert len(r["plies"]) == len(line)
         assert 0 <= r["material"]["plies"] <= len(line)
+
+
+# ------------------------------------------------------- defenders, king zones, safe squares
+
+RUY = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3"
+
+
+def test_the_only_defender_of_an_attacked_pawn_that_can_be_traded_off_is_removable():
+    (r,) = tactics.defenders(chess.Board(RUY))["removable"]
+    assert (r["defender"], r["defends"], r["taker"], r["white"]) == ("c6", ["e5"], "b5", False)
+    assert "only defender of pawn e5" in r["text"] and "can trade it off" in r["text"]
+
+
+def test_a_defender_that_costs_the_taker_more_is_not_removable():
+    # Qa4 also hits the knight, but Qxc6 dxc6 gives a queen for a knight
+    fen = "r1bqkbnr/pppp1ppp/2n5/4p3/Q3P3/5N2/PPPP1PPP/RNB1KB1R b KQkq - 0 1"
+    assert tactics.defenders(chess.Board(fen))["removable"] == []
+
+
+def test_a_piece_with_two_defenders_has_no_only_defender():
+    fen = "r1bqkbnr/pppp1ppp/2n5/1B2p3/4P3/5N2/PPPP1PPP/RNBQK2R b KQkq - 3 3"
+    board = chess.Board(fen)
+    board.set_piece_at(chess.parse_square("d6"), chess.Piece(chess.PAWN, chess.BLACK))   # now d6 guards e5 too
+    assert tactics.defenders(board)["removable"] == []
+
+
+def test_a_piece_defended_only_by_its_king_is_not_a_defender_pair():
+    board = chess.Board("4k3/4p3/8/8/8/8/8/K3R3 w - - 0 1")      # Re1 attacks e7, only the king guards it
+    assert tactics.exchange(board, sq("e7"), chess.WHITE) == 0     # Rxe7+ Kxe7: not loose
+    assert tactics.defenders(board) == {"removable": [], "overloaded": []}
+
+
+def test_a_rook_guarding_two_attacked_pieces_is_overloaded():
+    fen = "1n1r2k1/8/8/3p4/5B2/8/8/K2R4 w - - 0 1"
+    (o,) = tactics.defenders(chess.Board(fen))["overloaded"]
+    assert o["defender"] == "d8" and sorted(o["defends"]) == ["b8", "d5"] and o["white"] is False
+    assert "only defender of" in o["text"]
+
+
+def test_a_skewer_against_a_defended_pawn_is_not_reported_but_a_loose_one_is():
+    assert tactics.pins_and_skewers(chess.Board(RUY)) == []                        # d7 is defended: nothing to win
+    assert [x for x in pins("n3k3/8/8/q7/8/8/8/RK6 w - - 0 1") if x["slider"] == "a1"]   # a8 is not
+
+
+def test_king_zones_see_through_the_king_and_leave_out_its_own_pieces():
+    z = tactics.king_zones(chess.Board("R5k1/5ppp/8/8/8/8/8/4K3 b - - 0 1"))["black"]
+    assert z["king"] == "g8" and z["check"] is True
+    assert sorted(z["danger"]) == ["f8", "h8"] and z["escape"] == []               # h8 is hit through the king
+    z = tactics.king_zones(chess.Board(RUY))["black"]
+    assert z["escape"] == ["e7"] and z["danger"] == []
+
+
+def test_safe_squares_count_what_the_move_takes():
+    board = chess.Board("4k3/8/8/3p4/8/2N5/8/4K3 w - - 0 1")
+    out = tactics.safe_squares(board, sq("c3"))
+    assert out["e4"] is False                                      # the d5 pawn takes it
+    assert out["d5"] is True and out["b5"] is True                 # takes an undefended pawn / quiet
+    defended = chess.Board("4k3/8/4p3/3p4/8/2N5/8/4K3 w - - 0 1")
+    assert tactics.safe_squares(defended, sq("c3"))["d5"] is False  # a pawn for a knight
+    assert tactics.safe_squares(board, sq("d5")) == {}             # not the mover's piece

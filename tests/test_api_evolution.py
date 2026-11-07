@@ -20,7 +20,7 @@ FIVE_PLIES = "1. e4 e5 2. Nf3 Nc6 3. Bb5 *"
 
 
 def settings(tmp_path, stockfish=""):
-    s = config.load_settings(stockfish=stockfish or None, own_config=tmp_path / "none.toml")
+    s = config.load_settings(stockfish=stockfish or None, own_config=tmp_path / "none.toml", analyse=True)
     s.cache_dir = str(tmp_path / "cache")
     s.evo_depth, s.evo_seconds, s.evo_check_depth = 6, 5.0, 5
     return s

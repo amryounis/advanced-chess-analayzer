@@ -61,18 +61,20 @@ def launch(settings: config.Settings, debug: bool = False) -> None:
 def main(argv=None) -> None:
     ap = argparse.ArgumentParser(prog="uciboard", description=__doc__.strip().split("\n\n")[0])
     ap.add_argument("--stockfish", metavar="PATH", help="Stockfish executable (overrides config)")
+    ap.add_argument("--analyse", action="store_true", default=None,
+                    help="start analysing at once (by default the engine stays idle until you press Analyse)")
     ap.add_argument("--where", action="store_true",
                     help="print which Stockfish would be used, and from where, then exit")
     ap.add_argument("--debug", action="store_true", help="open the web inspector")
     args = ap.parse_args(argv)
     try:
-        settings = config.load_settings(stockfish=args.stockfish)
+        settings = config.load_settings(stockfish=args.stockfish, analyse=args.analyse)
     except config.ConfigError as e:
         raise SystemExit(str(e)) from e
     if args.where:
         print(f"stockfish_path = {settings.stockfish_path or '(none)'}   [{settings.source}]")
         print(f"threads = {settings.threads}   hash_mb = {settings.hash_mb}   "
-              f"multipv = {settings.multipv}")
+              f"multipv = {settings.multipv}   analyse at start = {settings.analyse}")
         print(f"own config: {config.user_config_path()}")
         return
     launch(settings, debug=args.debug)

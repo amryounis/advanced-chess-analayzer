@@ -11,7 +11,7 @@ pytestmark = pytest.mark.engine
 
 
 def page_with(make_page, stockfish, fen):
-    s = config.load_settings(stockfish=stockfish)
+    s = config.load_settings(stockfish=stockfish, analyse=True)
     api = Api(s)
     api.set_position(fen)
     page, errors = make_page(api)

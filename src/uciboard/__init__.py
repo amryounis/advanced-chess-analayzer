@@ -1,3 +1,3 @@
 """uciboard: a chess board that runs a UCI engine in infinite analysis."""
 
-__version__ = "0.8.1"
+__version__ = "0.9.0"

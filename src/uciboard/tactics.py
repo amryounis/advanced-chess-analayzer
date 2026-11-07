@@ -70,13 +70,12 @@ def _next_attacker(board: chess.Board, colour: bool, square: int):
     return None if best is None else best[1]
 
 
-def exchange(board: chess.Board, square: int, by: bool) -> int:
-    """What the side `by` can win by starting captures on `square`, in pawns (never negative:
-    it can always decline). 0 when there is nothing to capture, nothing to capture it with, or
-    the exchange does not pay."""
+def _see(board: chess.Board, square: int, by: bool):
+    """What the side `by` nets by starting captures on `square`, in pawns: negative when the
+    exchange loses for it, None when there is nothing it can capture there."""
     target = board.piece_at(square)
     if target is None or target.color == by or target.piece_type == chess.KING:
-        return 0
+        return None
     b = board.copy(stack=False)
     gains: list = []
     victim = VALUE[target.piece_type]
@@ -93,7 +92,15 @@ def exchange(board: chess.Board, square: int, by: bool) -> int:
         side = not side
     for d in range(len(gains) - 1, 0, -1):                     # each side stops when stopping is better
         gains[d - 1] = -max(-gains[d - 1], gains[d])
-    return max(0, gains[0]) if gains else 0
+    return gains[0] if gains else None
+
+
+def exchange(board: chess.Board, square: int, by: bool) -> int:
+    """What the side `by` can win by starting captures on `square`, in pawns (never negative:
+    it can always decline). 0 when there is nothing to capture, nothing to capture it with, or
+    the exchange does not pay."""
+    gain = _see(board, square, by)
+    return 0 if gain is None else max(0, gain)
 
 
 # --------------------------------------------------------- the position as it is
@@ -160,6 +167,14 @@ def pins_and_skewers(board: chess.Board) -> list:
                         kind, absolute = "skewer", False
                     else:
                         continue
+                    if not absolute:
+                        # Only worth showing when the piece behind can really be lost: once the front
+                        # piece has moved off the line, taking the back piece must win material.
+                        # (A knight "skewered" against a pawn that is defended costs nothing.)
+                        gone = board.copy(stack=False)
+                        gone.remove_piece_at(front)
+                        if exchange(gone, back, colour) <= 0:
+                            continue
                     s, f, k = _name(board, slider, True), _name(board, front, True), _name(board, back)
                     if kind == "skewer":
                         text = f"{s} skewers {f} against {k}"
@@ -175,8 +190,97 @@ def pins_and_skewers(board: chess.Board) -> list:
     return found
 
 
+def _sole_defenders(board: chess.Board, colour: bool) -> list:
+    """(defender, defended) pairs for `colour`: an attacked piece, safe for now, that has exactly one
+    piece able to recapture, and that would be lost if that piece were lifted off the board."""
+    pairs = []
+    enemy = not colour
+    for target in chess.scan_forward(board.occupied_co[colour] & ~board.kings):
+        attackers = board.attackers_mask(enemy, target)
+        if not attackers or exchange(board, target, enemy) > 0:
+            continue                                           # not attacked, or already loose
+        defenders = [f for f in chess.scan_forward(board.attackers_mask(colour, target))
+                     if _can_capture_on(board, colour, f, target)
+                     and (board.piece_type_at(f) != chess.KING or chess.popcount(attackers) <= 1)]
+        if len(defenders) != 1 or board.piece_type_at(defenders[0]) == chess.KING:
+            continue
+        lifted = board.copy(stack=False)
+        lifted.remove_piece_at(defenders[0])
+        if exchange(lifted, target, enemy) > 0:
+            pairs.append((defenders[0], target))
+    return pairs
+
+
+def defenders(board: chess.Board) -> dict:
+    """Pieces whose defence can be undermined, for both colours.
+
+    removable   the only defender of a piece that is attacked; the other side can take it, or trade
+                for it, and the piece it was guarding is then lost. (An exchange count: it does not
+                look for the recapture that wins the piece back, so it says "can be traded off", not
+                "wins a piece".)
+    overloaded  the only defender of two or more attacked pieces, which cannot both stay guarded.
+    """
+    removable, overloaded = [], []
+    for colour in (chess.WHITE, chess.BLACK):
+        by_defender: dict = {}
+        for d, t in _sole_defenders(board, colour):
+            by_defender.setdefault(d, []).append(t)
+        for d, targets in sorted(by_defender.items()):
+            names = " and ".join(_name(board, t) for t in targets)
+            entry = {"defender": chess.square_name(d), "defends": [chess.square_name(t) for t in targets],
+                     "white": colour == chess.WHITE}
+            if len(targets) >= 2:
+                overloaded.append({**entry, "text": f"{_name(board, d, True)} is the only defender of {names}"})
+            net = _see(board, d, not colour)
+            if net is not None and net >= 0:
+                taker = _next_attacker(board, not colour, d)
+                how = "take it" if net > 0 else "trade it off"
+                removable.append({**entry, "taker": chess.square_name(taker), "text":
+                    f"{_name(board, d, True)} is the only defender of {names}; "
+                    f"{_name(board, taker, True)} can {how}"})
+    return {"removable": removable, "overloaded": overloaded}
+
+
+def king_zones(board: chess.Board) -> dict:
+    """For each king, the squares around it (not those held by its own pieces) that the other side
+    attacks, and those it could step to. A slider's attack runs on through the king's own square."""
+    out = {}
+    for colour in (chess.WHITE, chess.BLACK):
+        k = board.king(colour)
+        if k is None:
+            continue
+        b = board.copy(stack=False)
+        b.remove_piece_at(k)
+        danger, escape = [], []
+        for sq in chess.scan_forward(chess.BB_KING_ATTACKS[k] & ~board.occupied_co[colour]):
+            (danger if b.is_attacked_by(not colour, sq) else escape).append(chess.square_name(sq))
+        out["white" if colour == chess.WHITE else "black"] = {
+            "king": chess.square_name(k), "danger": danger, "escape": escape,
+            "check": board.is_check() and board.turn == colour}
+    return out
+
+
+def safe_squares(board: chess.Board, square: int) -> dict:
+    """For the piece of the side to move on `square`: each square it can go to, True when it is safe
+    there or the move wins material, False when the piece can be won there (net of what it takes)."""
+    out = {}
+    piece = board.piece_at(square)
+    if piece is None or piece.color != board.turn:
+        return out
+    for move in board.legal_moves:
+        if move.from_square != square:
+            continue
+        taken = board.piece_at(move.to_square)
+        won = VALUE[taken.piece_type] if taken else (1 if board.is_en_passant(move) else 0)
+        after = board.copy(stack=False)
+        after.push(move)
+        out[chess.square_name(move.to_square)] = won - exchange(after, move.to_square, not piece.color) >= 0
+    return out
+
+
 def analyse(board: chess.Board) -> dict:
-    return {"loose": loose_pieces(board), "pins": pins_and_skewers(board)}
+    return {"loose": loose_pieces(board), "pins": pins_and_skewers(board),
+            "defenders": defenders(board), "kings": king_zones(board)}
 
 
 # ------------------------------------------------------------- an engine's line

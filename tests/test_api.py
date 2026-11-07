@@ -1,3 +1,5 @@
+import time
+
 import chess
 import pytest
 
@@ -71,7 +73,7 @@ def test_game_over_is_reported():
 
 @pytest.mark.engine
 def test_the_engine_follows_the_board(stockfish):
-    api = Api(config.load_settings(stockfish=stockfish))
+    api = Api(config.load_settings(stockfish=stockfish, analyse=True))
     try:
         api.start()
         cursor = 0
@@ -99,7 +101,7 @@ def test_the_engine_follows_the_board(stockfish):
 
         api.pause()
         wait_for(lambda: (drain(), any(t.startswith("bestmove") for t in seen))[1])
-        assert drain()["engine"]["state"] == "paused"
+        assert drain()["engine"]["state"] == "off"
         api.resume()
         wait_for(lambda: drain()["engine"]["state"] == "analysing")
     finally:
@@ -107,8 +109,33 @@ def test_the_engine_follows_the_board(stockfish):
 
 
 @pytest.mark.engine
+def test_the_engine_stays_idle_until_analysis_is_switched_on(stockfish):
+    api = Api(config.load_settings(stockfish=stockfish))              # the default: off
+    try:
+        api.start()
+        e = api.poll(0)["engine"]
+        assert e["state"] == "off" and e["on"] is False
+        api.move("e2", "e4")
+        api.move("e7", "e5")
+        time.sleep(1.0)                                               # a search would have printed by now
+        p = api.poll(0)
+        assert p["engine"]["state"] == "off" and p["summary"] == {} and p["uci"]["rows"] == []
+        assert not any(l["t"].startswith(("go ", "info ")) for l in p["lines"])
+        api.resume()                                                  # the Analyse button
+        wait_for(lambda: api.poll(0)["summary"].get("depth", 0) >= 6)
+        assert api.poll(0)["engine"]["on"] is True
+        api.pause()                                                   # the Stop button
+        assert api.poll(0)["engine"]["state"] == "off"
+        api.move("g1", "f3")                                          # moving does not wake it
+        time.sleep(0.5)
+        assert api.poll(0)["engine"]["state"] == "off"
+    finally:
+        api.shutdown()
+
+
+@pytest.mark.engine
 def test_a_checkmated_position_stops_the_search(stockfish):
-    api = Api(config.load_settings(stockfish=stockfish))
+    api = Api(config.load_settings(stockfish=stockfish, analyse=True))
     try:
         api.start()
         for orig, dest in [("f2", "f3"), ("e7", "e5"), ("g2", "g4"), ("d8", "h4")]:
@@ -128,7 +155,7 @@ def test_a_bad_engine_path_is_reported(tmp_path):
 
 @pytest.mark.engine
 def test_the_summary_carries_the_best_line_as_arrows(stockfish):
-    api = Api(config.load_settings(stockfish=stockfish))
+    api = Api(config.load_settings(stockfish=stockfish, analyse=True))
     try:
         api.start()
         p = wait_for(lambda: (q := api.poll(0))["summary"].get("depth", 0) >= 10 and q)
@@ -153,7 +180,9 @@ def test_the_summary_carries_the_best_line_as_arrows(stockfish):
 
 def test_state_carries_what_the_geometry_says_about_the_shown_position(tmp_path):
     api = Api(config.load_settings(own_config=tmp_path / "none.toml"))
-    assert api.state()["tactics"] == {"loose": [], "pins": []}
+    t = api.state()["tactics"]
+    assert t["loose"] == [] and t["pins"] == [] and t["defenders"] == {"removable": [], "overloaded": []}
+    assert t["kings"]["white"]["king"] == "e1" and t["kings"]["black"]["king"] == "e8"
     api.set_position("4k3/8/8/3q4/8/8/8/3RK3 w - - 0 1")
     loose = api.state()["tactics"]["loose"]
     assert [(f["square"], f["gain"], f["now"]) for f in loose] == [("d5", 9, True)]
@@ -170,3 +199,12 @@ def test_line_themes_are_added_to_the_summary_and_remembered(tmp_path):
     assert api.poll(0)["summary"]["themes"] is first                 # computed once
     api._summary = {"pv_uci": [], "fen": fen}
     assert "themes" not in api.poll(0)["summary"]
+
+
+def test_safe_squares_come_from_the_game_on_the_board():
+    api = Api(config.Settings())
+    api.set_position("4k3/8/8/3p4/8/2N5/8/4K3 w - - 0 1")
+    r = api.safe_squares("c3")
+    assert r["square"] == "c3" and r["squares"]["e4"] is False and r["squares"]["b5"] is True
+    assert api.safe_squares("d5")["squares"] == {}               # Black's piece, White to move
+    assert api.safe_squares("zz")["squares"] == {}               # not a square: no crash

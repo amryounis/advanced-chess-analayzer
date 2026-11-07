@@ -56,3 +56,25 @@ def test_a_path_that_points_nowhere_is_an_error_not_a_fallthrough(tmp_path):
         s.require_stockfish()
     with pytest.raises(config.ConfigError, match="No Stockfish"):
         config.Settings().require_stockfish()
+
+
+def test_analysis_is_off_unless_asked_for(tmp_path):
+    none = tmp_path / "none.toml"
+    assert config.load_settings(own_config=none).analyse is False
+    on = _write(tmp_path / "on.toml", "analyse = true\n")
+    assert config.load_settings(own_config=on).analyse is True
+    assert config.load_settings(own_config=on, analyse=False).analyse is False      # the flag wins
+    assert config.load_settings(own_config=none, analyse=True).analyse is True
+    with pytest.raises(config.ConfigError, match="analyse"):
+        config.load_settings(own_config=_write(tmp_path / "bad.toml", 'analyse = "yes"\n'))
+
+
+def test_the_command_line_flag(monkeypatch, tmp_path):
+    from uciboard import app
+    seen = {}
+    monkeypatch.setattr(app, "launch", lambda settings, debug=False: seen.update(a=settings.analyse))
+    monkeypatch.setattr(config, "user_config_path", lambda: tmp_path / "none.toml")
+    app.main([])
+    assert seen["a"] is False
+    app.main(["--analyse"])
+    assert seen["a"] is True
