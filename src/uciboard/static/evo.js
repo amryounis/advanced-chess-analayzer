@@ -633,6 +633,7 @@ export function initEvolution(ctx) {
     const names = i.white || i.black ? `${i.white || "?"} – ${i.black || "?"}` : "";
     const stats = data.stats;
     const bits = [names, i.event, i.result && i.result !== "*" ? i.result : "", `${stats.plies} moves`,
+      data.engine ? `analysed with ${data.engine}` : "",
       `${stats.shown} positions shown of ${stats.merged} found`].filter(Boolean);
     box.append(bits.join(" · "));
     const q = data.quality && data.quality.counts;
@@ -670,6 +671,7 @@ export function initEvolution(ctx) {
     $("evo-export").disabled = on;
     $("evo-depth").disabled = on;
     $("evo-seconds").disabled = on;
+    $("pick-evo").disabled = on;
     $("evo-cancel").hidden = !on;
     $("evo-progress").hidden = !on;
     if (!on) $("evo-cancel").disabled = false;

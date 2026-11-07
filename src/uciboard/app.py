@@ -76,5 +76,6 @@ def main(argv=None) -> None:
         print(f"threads = {settings.threads}   hash_mb = {settings.hash_mb}   "
               f"multipv = {settings.multipv}   analyse at start = {settings.analyse}")
         print(f"own config: {config.user_config_path()}")
+        print(f"engine list: {settings.engines_file}")
         return
     launch(settings, debug=args.debug)

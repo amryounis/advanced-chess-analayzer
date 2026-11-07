@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import io
 import json
+import os
 import threading
 import traceback
 from typing import Optional
@@ -19,7 +20,7 @@ from typing import Optional
 import chess
 import chess.pgn
 
-from . import __version__, config, evolution, pgnexport, posgraph, quality, structure, tactics
+from . import __version__, config, engines, evolution, pgnexport, posgraph, quality, structure, tactics
 from .layout import layout as run_layout
 from .uci import EngineError, UciEngine, parse_info
 
@@ -86,6 +87,10 @@ class Api:
         self._board = chess.Board()
         self._root_fen = self._board.fen()
         self._engine: Optional[UciEngine] = None
+        self._registry = engines.Registry(self._settings.stockfish_path, self._settings.source,
+                                          self._settings.engines_file)
+        self._live_id = ""                   # which engine of the registry the live analysis runs on
+        self._live_options: dict = {}
         self._error = ""                     # why there is no engine, if there is none
         self._paused = not self._settings.analyse   # analysis is opt-in: an idle engine uses no CPU
         self._lock = threading.RLock()       # board + engine control
@@ -118,11 +123,13 @@ class Api:
         with self._lock:
             if self._engine is None:
                 try:
-                    path = self._settings.require_stockfish()
-                    engine = UciEngine(path, on_line=self._on_line,
-                                       options=self._settings.uci_options())
+                    entry = self._registry.resolve("live")
+                    path = self._entry_path(entry)
+                    options = self._entry_options(entry)
+                    engine = UciEngine(path, on_line=self._on_line, options=options)
                     engine.start()
                     self._engine, self._error = engine, ""
+                    self._live_id, self._live_options = entry.id, options
                 except (config.ConfigError, EngineError) as e:
                     self._error = str(e)
                     self._note(f"! {e}")
@@ -294,8 +301,8 @@ class Api:
             reset = row_epoch != self._row_epoch
             rows = list(self._rows) if reset else [r for r in self._rows if r["n"] > row_cursor]
             uci = {"rows": rows, "reset": reset, "epoch": self._row_epoch, "cursor": self._row_seq,
-                   "stats": {**self._stats, "threads": self._settings.threads,
-                             "hash_mb": self._settings.hash_mb}}
+                   "stats": {**self._stats, "threads": self._reported(engine, "Threads"),
+                             "hash_mb": self._reported(engine, "Hash")}}
         if summary.get("pv_uci"):
             summary["themes"] = self._themes(summary["fen"], summary["pv_uci"])
         return {"lines": chunk, "cursor": new_cursor, "summary": summary, "uci": uci,
@@ -317,9 +324,11 @@ class Api:
 
     def _engine_state(self, engine) -> dict:
         if engine is None:
-            return {"state": "none", "name": "", "error": self._error, "on": not self._paused}
+            return {"state": "none", "name": "", "error": self._error, "on": not self._paused,
+                    "id": self._live_id}
         if not engine.alive:
-            return {"state": "exited", "name": engine.name, "error": self._error, "on": not self._paused}
+            return {"state": "exited", "name": engine.name, "error": self._error, "on": not self._paused,
+                    "id": self._live_id}
         if self._evo_busy:
             state = "busy"
         elif self._shown().is_game_over(claim_draw=False):
@@ -328,7 +337,8 @@ class Api:
             state = "off"
         else:
             state = "analysing"
-        return {"state": state, "name": engine.name, "error": self._error, "on": not self._paused}
+        return {"state": state, "name": engine.name, "error": self._error, "on": not self._paused,
+                "id": self._live_id}
 
     # -------------------------------------------------------------- board
 
@@ -595,6 +605,113 @@ class Api:
             self._restart_analysis()
             return self._state()
 
+    # ------------------------------------------------------------ the list of engines
+
+    def _entry_path(self, entry) -> str:
+        """The program of a registry entry, or a ConfigError saying why it cannot be used."""
+        if entry is None or entry.is_default:
+            return self._settings.require_stockfish()         # also says what to do when there is none
+        if not os.path.isfile(entry.path):
+            raise config.ConfigError(f"{entry.name}: no program at {entry.path}")
+        return entry.path
+
+    def _entry_options(self, entry) -> dict:
+        """What is sent to the engine: the general settings, then the engine's own options on top.
+        (The engine only gets those it reports having.)"""
+        return {**self._settings.uci_options(), **(entry.options if entry else {})}
+
+    @staticmethod
+    def _reported(engine, name: str):
+        """The value of an option the engine reports having and was given, else nothing."""
+        if engine is None or name not in engine.option_names:
+            return ""
+        return engine.options.get(name, "")
+
+    def engines(self) -> dict:
+        """The engines to choose from, and which one each job uses."""
+        live, evo = self._registry.resolve("live"), self._registry.resolve("evolution")
+        return {
+            "engines": [{"id": e.id, "name": e.name, "path": e.path, "default": e.is_default,
+                         "options": engines.options_text(e.options), "found": os.path.isfile(e.path)}
+                        for e in self._registry.all()],
+            "live": live.id if live else "", "evolution": evo.id if evo else "",
+            "error": self._registry.error}
+
+    def add_engine(self, path: str, name: str = "") -> dict:
+        """Add a UCI engine to the list (it is started once, to read its name)."""
+        path = (path or "").strip().strip('"')
+        try:
+            found = engines.probe(path)
+        except EngineError as e:
+            return {"ok": False, "message": str(e), **self.engines()}
+        with self._lock:
+            entry = self._registry.add(path, name or found)
+        return {"ok": True, "added": entry.id, **self.engines()}
+
+    def update_engine(self, engine_id: str, name: str, options: str) -> dict:
+        """Rename an added engine and set its options (one `Name=value` per line)."""
+        try:
+            parsed = engines.parse_options(options)
+        except ValueError as e:
+            return {"ok": False, "message": str(e), **self.engines()}
+        with self._lock:
+            entry = self._registry.get(engine_id)
+            if entry is None or entry.is_default:
+                return {"ok": False, "message": "That engine cannot be edited.", **self.engines()}
+            changed = entry.options != parsed
+            try:
+                self._registry.update(engine_id, name, parsed)
+            except ValueError as e:
+                return {"ok": False, "message": str(e), **self.engines()}
+            if changed and engine_id == self._live_id:
+                self._switch_live()                           # new options mean a fresh engine
+        return {"ok": True, **self.engines()}
+
+    def remove_engine(self, engine_id: str) -> dict:
+        with self._lock:
+            entry = self._registry.get(engine_id)
+            if entry is None or entry.is_default:
+                return {"ok": False, "message": "That engine cannot be removed.", **self.engines()}
+            was_live = engine_id == self._live_id
+            self._registry.remove(engine_id)
+            if was_live:
+                self._switch_live()
+        return {"ok": True, **self.engines()}
+
+    def choose_engine(self, role: str, engine_id: str) -> dict:
+        """Use this engine for the live analysis (`live`) or for the game analysis (`evolution`)."""
+        with self._lock:
+            try:
+                self._registry.choose(role, engine_id)
+            except KeyError:
+                return {"ok": False, "message": "No such engine.", **self.engines()}
+            if role == "live":
+                chosen = self._registry.resolve("live")
+                if chosen is None or chosen.id != self._live_id or self._engine is None:
+                    self._switch_live()
+        return {"ok": True, **self.engines()}
+
+    def pick_engine_file(self) -> str:
+        """Ask for an engine program in the desktop window's file dialog ("" when cancelled, or when
+        there is no window, as in a browser)."""
+        try:
+            import webview
+            kinds = ("Programs (*.exe)", "All files (*.*)") if os.name == "nt" else ("All files (*)",)
+            chosen = webview.windows[0].create_file_dialog(webview.OPEN_DIALOG, file_types=kinds)
+        except Exception:                                      # noqa: BLE001 - no window, no dialog
+            return ""
+        return str(chosen[0]) if chosen else ""
+
+    def _switch_live(self) -> None:
+        """Stop the live engine and start the one now chosen (called with the lock held)."""
+        old, self._engine = self._engine, None
+        if old is not None:
+            old.quit()
+        with self._buf_lock:
+            self._summary = {}
+            self._new_search(None)
+        self.start()
+
     # ------------------------------------------------------------ evolution
 
     def evolution_start(self, params: Optional[dict] = None) -> dict:
@@ -604,10 +721,15 @@ class Api:
                 return {"started": False, "message": "An analysis is already running."}
             if not self._board.move_stack:
                 return {"started": False, "message": "Play some moves or load a PGN first."}
+            entry = self._registry.resolve("evolution")
             try:
-                path = self._settings.require_stockfish()
+                path = self._entry_path(entry)
             except config.ConfigError as e:
                 return {"started": False, "message": str(e)}
+            options = self._entry_options(entry)
+            # the default engine keeps the keys of analyses saved before there was a choice
+            ident = "" if entry.is_default else f"{os.path.normcase(os.path.abspath(path))}|" + json.dumps(
+                entry.options, sort_keys=True)
             s = self._settings
             wanted = evolution.Params(depth=s.evo_depth, lines=s.evo_lines, seconds=s.evo_seconds,
                                       check_depth=s.evo_check_depth)
@@ -631,7 +753,8 @@ class Api:
             self._set_evo(state="running", done=0, total=0, message="starting the engine", error="")
             self._evo_result = None
             self._evo_thread = threading.Thread(
-                target=self._run_evolution, args=(path, start_fen, moves, wanted, info), daemon=True)
+                target=self._run_evolution, args=(path, start_fen, moves, wanted, info),
+                kwargs={"options": options, "ident": ident, "label": entry.name}, daemon=True)
             self._evo_thread.start()
         return {"started": True}
 
@@ -658,9 +781,10 @@ class Api:
         with self._evo_lock:
             self._evo_status.update(changes)
 
-    def _run_evolution(self, path: str, start_fen: str, moves: list, params, info: dict) -> None:
+    def _run_evolution(self, path: str, start_fen: str, moves: list, params, info: dict,
+                       options: Optional[dict] = None, ident: str = "", label: str = "") -> None:
         cache_file = config.cache_path(self._settings) / (
-            evolution.cache_key(start_fen, moves, params) + ".json")
+            evolution.cache_key(start_fen, moves, params, ident) + ".json")
         try:
             data = None
             try:
@@ -670,7 +794,7 @@ class Api:
             if data is not None:
                 self._set_evo(message="from the saved analysis")
             else:
-                with evolution.UciSearcher(path, self._settings.uci_options()) as searcher:
+                with evolution.UciSearcher(path, options or self._settings.uci_options()) as searcher:
                     self._evo_searcher = searcher
                     evo = evolution.build(
                         start_fen, moves, searcher, params,
@@ -687,6 +811,7 @@ class Api:
                 except OSError:
                     pass                                   # not being able to save is not an error
             data["info"] = info
+            data["engine"] = label                         # who analysed it (not kept with the saved graph)
             # not kept with the saved graph: it costs nothing to work out, and saved graphs made
             # before the measures existed get them too
             data["metrics"] = posgraph.game_metrics(data["start_fen"], data["moves"])

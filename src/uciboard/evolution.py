@@ -292,8 +292,11 @@ class Evolution:
 GRAPH_VERSION = 2            # what the saved graphs contain; a new version leaves older files unused
 
 
-def cache_key(start_fen: str, moves: list, params: Params) -> str:
-    blob = json.dumps([GRAPH_VERSION, start_fen, moves, asdict(params)], sort_keys=True)
+def cache_key(start_fen: str, moves: list, params: Params, engine: str = "") -> str:
+    """Which saved analysis this is. A different engine gives a different graph, so it is part of the
+    key; "" (the engine uciboard finds itself) leaves the key as it was before engines could be chosen."""
+    parts = [GRAPH_VERSION, start_fen, moves, asdict(params)] + ([engine] if engine else [])
+    blob = json.dumps(parts, sort_keys=True)
     return hashlib.sha1(blob.encode()).hexdigest()[:20]
 
 

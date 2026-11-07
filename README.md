@@ -262,6 +262,33 @@ analyse = false    # true: start analysing at once (default: off until you press
 
 `uciboard --analyse` does the same for one run and beats the file.
 
+## Choosing engines
+
+The live analysis and the game analysis (the Evolution graph) each have their own engine menu:
+**Live** in the top bar, and **Engine** beside *Analyse game*. Both choose from the same list: the
+Stockfish uciboard finds by itself (above), and any UCI engine you add. Choose *Add or edit
+engines…* at the bottom of either menu to open the list.
+
+- **Add engine…** opens a file dialog for the program (or paste its path in the box first). It is
+  started once to read its name, so a program that is not a UCI engine is refused with a message.
+- **Options**: one `Name=value` per line under each added engine. An engine is only sent the options
+  it reports having, so `Hash` is skipped by an engine without it, and the general `threads`,
+  `hash_mb` and `multipv` settings apply to every engine that has them unless its own options say
+  otherwise. Lc0, for instance, needs `WeightsFile=…` (and usually `Backend=…`).
+  *Lc0* notes list more. Changing the options of the live engine restarts it.
+- Switching the live engine restarts it on the position on the board and leaves the analysis on or
+  off as it was. The game analysis uses its own engine process, as before, and the live analysis
+  still waits while it runs.
+- **Saved analyses are kept per engine**: the same game analysed with two engines gives two graphs,
+  and each is reused when that engine is chosen again. The graph's title says which engine made it.
+  (Analyses saved before engines could be chosen belong to the Stockfish uciboard finds itself.)
+- The list and the two choices are saved in `engines.json` beside the config file; `uciboard
+  --where` prints its path. Removing an engine that was chosen puts the menu back on the automatic
+  Stockfish.
+
+Only Stockfish has been run through this. Other UCI engines should work, but the game analysis asks
+for depth-limited searches, which an engine like Lc0 may treat differently.
+
 ## Development
 
 ```
@@ -279,6 +306,7 @@ skipped when there is none. The browser tests also need `playwright install chro
 | --- | --- |
 | `uci.py` | Drives the engine process; infinite search that can jump to a new position, and drops the old search's output when it does |
 | `api.py` | What the page calls: board, moves, polling of the output (log, depth table, counters), summary and the best line's arrows; PGN loading, viewing a position, the Evolution job |
+| `engines.py` | The list of engines (the one found automatically, those added, their options, the two choices), reading and saving `engines.json`, and starting a program once to read its name |
 | `tactics.py` | Exchange evaluation, loose pieces, pins and skewers, defenders, king zones, safe squares, and the labels and net material of an engine line (python-chess only) |
 | `structure.py` | Open and half-open files, doubled and isolated pawns |
 | `quality.py` | Inaccuracy, mistake and blunder marks from the analysis |

@@ -29,11 +29,13 @@ class EngineError(Exception):
 
 class UciEngine:
     def __init__(self, path: str, on_line: Optional[LineCallback] = None,
-                 options: Optional[dict] = None, startup_timeout: float = 20.0):
+                 options: Optional[dict] = None, startup_timeout: float = 20.0,
+                 ready_timeout: float = 120.0):
         self.path = path
         self.on_line = on_line or (lambda kind, text, tag: None)
         self.options = dict(options or {})
-        self.startup_timeout = startup_timeout
+        self.startup_timeout = startup_timeout      # to answer `uci`
+        self.ready_timeout = ready_timeout          # to answer `isready` (a network may be loading)
         self.name = ""
         self.option_names: set = set()
         self._proc: Optional[subprocess.Popen] = None
@@ -47,7 +49,9 @@ class UciEngine:
 
     # ------------------------------------------------------------ lifecycle
 
-    def start(self) -> None:
+    def start(self, ready: bool = True) -> None:
+        """Start the program and read its `uci` answer; then, unless `ready` is False, send the
+        options and wait until it is ready."""
         flags = getattr(subprocess, "CREATE_NO_WINDOW", 0) if os.name == "nt" else 0
         try:
             self._proc = subprocess.Popen(
@@ -64,12 +68,14 @@ class UciEngine:
         if not self._uciok.wait(self.startup_timeout):
             self.quit()
             raise EngineError(f"{self.path} did not answer `uci`. Is it a UCI engine?")
+        if not ready:
+            return
         for name, value in self.options.items():
             if name in self.option_names:
                 self._send(f"setoption name {name} value {value}")
         self._readyok.clear()
         self._send("isready")
-        if not self._readyok.wait(self.startup_timeout):
+        if not self._readyok.wait(self.ready_timeout):
             self.quit()
             raise EngineError(f"{self.path} did not become ready.")
 

@@ -59,6 +59,7 @@ class Settings:
     evo_check_depth: int = 10       # depth of the quick searches that judge a check
     cache_dir: str = ""             # finished Evolution analyses; "" = "evolution" beside the config
     source: str = "defaults"        # where the Stockfish path came from (info only)
+    engines_file: Optional[Path] = None   # the added engines and the two choices; None = not saved
 
     def uci_options(self) -> dict:
         return {"Threads": self.threads, "Hash": self.hash_mb, "MultiPV": self.multipv}
@@ -120,6 +121,7 @@ def load_settings(stockfish: Optional[str] = None, own_config: Optional[Path] = 
     s = Settings(threads=default_threads())
 
     own = Path(own_config) if own_config else user_config_path()
+    s.engines_file = own.parent / "engines.json"
     data = _read(own) if own.exists() else {}
     unknown = set(data) - {"stockfish_path", "threads", "hash_mb", "multipv", "evo_depth",
                            "evo_lines", "evo_seconds", "evo_check_depth", "cache_dir", "analyse"}

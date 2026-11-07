@@ -14,6 +14,8 @@
   <span class="engine" id="engine" data-state="none">
     <span class="dot"></span><span id="engine-text">starting…</span>
   </span>
+  <label class="pick" title="The engine for the live analysis of the board">Live
+    <select id="pick-live" aria-label="Engine for the live analysis"></select></label>
   <span class="spacer"></span>
   <button id="btn-undo" title="Take back the move on the board; if you stepped back, the moves after it go too">Undo</button>
   <button id="btn-reset" title="Back to the starting position">New</button>
@@ -77,6 +79,7 @@
         <button id="evo-run" class="primary" title="Analyse the game on the board and draw its evolution graph">Analyse game</button>
         <label>Depth <input id="evo-depth" type="number" min="1" max="60" step="1" title="Search depth per position. The paper uses 20; deeper is slower."></label>
         <label>Seconds <input id="evo-seconds" type="number" min="1" max="600" step="1" title="Most time spent on one position, whatever the depth"></label>
+        <label>Engine <select id="pick-evo" aria-label="Engine for the game analysis"></select></label>
         <button id="evo-pgn" title="Paste a game to analyse">Load PGN…</button>
         <button id="evo-export" title="The game as PGN, with the engine's scores, tactic names and arrows in the comments (analyse the game first to include the scores)">Export PGN…</button>
         <button id="evo-cancel" hidden>Cancel</button>
@@ -144,6 +147,23 @@
       <button type="button" id="export-copy" class="primary">Copy</button>
     </div>
   </form>
+</dialog>
+
+<dialog id="engines-dialog">
+  <div class="pgn-form">
+    <label>Engines</label>
+    <div class="muted eng-help">Any UCI engine. The <b>Live</b> menu (top) and the <b>Engine</b> menu (beside
+      <i>Analyse game</i>) each pick one of these, separately. An engine only receives the options it reports
+      having, so <code>Hash</code> is skipped by an engine without it. Changing the options of the live engine
+      restarts it. For Lc0, add <code>WeightsFile=…</code> (and usually <code>Backend=…</code>).</div>
+    <div id="engines-list" class="eng-list"></div>
+    <div class="eng-addrow">
+      <input id="eng-path" spellcheck="false" placeholder="Path to an engine, or use Browse">
+      <button type="button" id="eng-add" class="primary" title="Browse for the engine program (or paste its path first)">Add engine…</button>
+    </div>
+    <div class="pgn-msg" id="engines-msg" role="status"></div>
+    <div class="pgn-buttons"><button type="button" id="eng-close">Close</button></div>
+  </div>
 </dialog>
 
 <dialog id="pgn-dialog">

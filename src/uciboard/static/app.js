@@ -1,5 +1,6 @@
 import { Chessground } from "./vendor/chessground.min.js";
 import { initEvolution } from "./evo.js";
+import { initEngines } from "./engines.js";
 
 const $ = (id) => document.getElementById(id);
 const START = "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1";
@@ -11,6 +12,7 @@ let cursor = 0;
 let engineOn = false;                // is the live analysis switched on?
 let current = null;                  // the last state from Python
 let orientation = "white";
+let engines = null;                  // the engine pickers and their dialog (engines.js)
 let evo = null;                      // the Evolution tab (evo.js), set up in init()
 
 // One brush per side per move of the best line: the first is the boldest, later ones fade,
@@ -666,6 +668,7 @@ async function act(fn, ...args) {
 $("btn-undo").addEventListener("click", () => act(api.undo));
 $("btn-reset").addEventListener("click", () => act(api.reset));
 $("btn-flip").addEventListener("click", () => setOrientation(orientation === "white" ? "black" : "white"));
+// ---- init-time hookup of the engine list is in init(); a change of the live engine restarts it
 $("btn-pause").addEventListener("click", async () => {
   await act(engineOn ? api.pause : api.resume);
   poll();
@@ -714,6 +717,8 @@ async function init() {
   evo.onState(current);
   evo.init();
   evo.show();
+  engines = initEngines({ api: () => api, onLiveChanged: () => poll() });
+  await engines.refresh();
   poll();
   setInterval(poll, POLL_MS);
 }
