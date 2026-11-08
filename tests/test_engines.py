@@ -220,3 +220,27 @@ def test_the_default_engine_keeps_the_old_cache_key():
     p = Params()
     assert cache_key(chess.STARTING_FEN, ["e2e4"], p, "") == cache_key(chess.STARTING_FEN, ["e2e4"], p)
     assert cache_key(chess.STARTING_FEN, ["e2e4"], p, "lc0|{}") != cache_key(chess.STARTING_FEN, ["e2e4"], p)
+
+
+def test_the_engine_file_dialog_opens_on_this_pages_own_window(monkeypatch):
+    # Opened from another program (chesscoach), webview.windows[0] is that program's window.
+    import sys
+    import types
+
+    from uciboard.api import Api
+
+    class Win:
+        def __init__(self, path):
+            self.path, self.asked = path, 0
+
+        def create_file_dialog(self, kind, **kw):
+            self.asked += 1
+            return [self.path]
+
+    other, mine = Win("other.exe"), Win("mine.exe")
+    fake = types.SimpleNamespace(OPEN_DIALOG=10, windows=[other])
+    monkeypatch.setitem(sys.modules, "webview", fake)
+    api = Api()
+    assert api.pick_engine_file() == "other.exe"        # no window known: the first one, as before
+    api._window = mine
+    assert api.pick_engine_file() == "mine.exe" and mine.asked == 1 and other.asked == 1

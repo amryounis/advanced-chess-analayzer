@@ -50,6 +50,7 @@ def launch(settings: config.Settings, debug: bool = False) -> None:
     window = webview.create_window(
         f"uciboard {__version__}", url=f"http://127.0.0.1:{port}/index.html", js_api=api,
         width=1240, height=820, min_size=(900, 600))
+    api._window = window
     window.events.closing += api.shutdown
     try:
         webview.start(debug=debug)

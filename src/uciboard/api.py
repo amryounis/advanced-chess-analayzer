@@ -84,6 +84,7 @@ def long_line(fen: str, uci_moves: list, limit: int) -> str:
 class Api:
     def __init__(self, settings: Optional[config.Settings] = None):
         self._settings = settings or config.Settings()
+        self._window = None                  # the window showing this page: set by whoever opens it
         self._board = chess.Board()
         self._root_fen = self._board.fen()
         self._engine: Optional[UciEngine] = None
@@ -697,7 +698,10 @@ class Api:
         try:
             import webview
             kinds = ("Programs (*.exe)", "All files (*.*)") if os.name == "nt" else ("All files (*)",)
-            chosen = webview.windows[0].create_file_dialog(webview.OPEN_DIALOG, file_types=kinds)
+            # this page's own window: inside another program (chesscoach) the first window is that
+            # program's, and the dialog would open over it
+            window = self._window or webview.windows[0]
+            chosen = window.create_file_dialog(webview.OPEN_DIALOG, file_types=kinds)
         except Exception:                                      # noqa: BLE001 - no window, no dialog
             return ""
         return str(chosen[0]) if chosen else ""
